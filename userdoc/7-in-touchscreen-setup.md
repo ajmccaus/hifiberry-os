@@ -48,7 +48,7 @@ wget http://deb.debian.org/debian/pool/main/libx/libx11/libx11-data_1.8.4-2+deb1
 
 ## Step 3a: Extract the Package
 
-Extract it (we need ar and tar):
+Extract it:
 
 ```bash
 ar x libx11-data_1.8.4-2+deb12u2_all.deb
