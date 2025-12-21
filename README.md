@@ -1,17 +1,14 @@
 [![GitHub contributors](https://img.shields.io/github/contributors/hifiberry/hifiberry-os.svg)](https://GitHub.com/hifiberry/hifiberry-os/graphs/contributors/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## HiFiBerryOS Notice
+## Setup Guides & Troubleshooting
 
-**The current HiFiBerryOS releases, including HiFiBerryOS and HiFiBerryOS64, are no longer maintained. No further updates, feature additions, or bug fixes will be provided.**
+- [Official RPi 7" Touchscreen Setup](userdoc/Official-RPi-7-in-touchscreen-setup.md)
+  - Fixes graphics clipping, touch rotation, and cog crashes
 
-**We are currently developing a new system, which is available in the [`hbosng` branch](https://github.com/hifiberry/hifiberry-os/tree/hbosng) of this repository. We do not provide timelines or guarantees regarding specific features or release dates.**
-
-**Due to this transition, the issue tracker has been temporarily disabled.**
-
-**For progress updates, you can follow our [blog](https://hifiberry.com/blog).**
 
 # HiFiBerryOS
+**For progress updates, you can follow our [blog](https://hifiberry.com/blog).**
 
 HiFiBerryOS is our version of a minimal Linux distribution optimized for audio playback. 
 The goal isn't to add as much functionality as possible, but to keep it small. Therefore, 
