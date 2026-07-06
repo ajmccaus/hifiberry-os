@@ -2,6 +2,7 @@
 Description=Temporay AP: dnsmasq
 Wants=network.target tempap-hostapd.service
 After=network.target tempap-hostapd.service
+PartOf=tempap.service
 ConditionPathExists=!/boot/noap
 
 [Service]
