@@ -34,6 +34,14 @@ var backlightRoot = process.env.BEO_BACKLIGHT_DIR || "/sys/class/backlight";
 var backlightDirectory = null; // Full path of the detected backlight device.
 var maxBrightness = 255;
 
+// Minimum brightness (percent) applied and persisted through the UI/settings
+// path. Without a floor, saving 0 would leave the kiosk permanently dark with
+// no on-device way to recover. Deliberately turning the display off belongs
+// to the touch-timeout feature, not this slider. Direct API callers
+// (beo.extensions.screen.setBrightness) can still apply lower values, but
+// those are never persisted below the floor.
+var MINIMUM_BRIGHTNESS = 5;
+
 function detectBacklight() {
 	// Auto-detect the first backlight device (same approach as touch-timeout).
 	backlightDirectory = null;
@@ -72,6 +80,7 @@ function applyBrightness(percentage, save) {
 	percentage = parseFloat(percentage);
 	if (percentage < 0) percentage = 0;
 	if (percentage > 100) percentage = 100;
+	if (save && percentage < MINIMUM_BRIGHTNESS) percentage = MINIMUM_BRIGHTNESS; // Never persist below the floor.
 	if (!backlightDirectory) detectBacklight();
 	if (backlightDirectory) {
 		scaled = Math.round(percentage / 100 * maxBrightness);
@@ -114,8 +123,14 @@ beo.bus.on('general', function(event) {
 
 	if (event.header == "startup") {
 		detectBacklight();
-		// Restore the persisted brightness level.
+		// Restore the persisted brightness level. A persisted value below the
+		// floor (e.g. from an older version or hand-edited settings) is
+		// clamped up so the screen is never restored to black.
 		if (backlightDirectory && settings.brightness != undefined) {
+			if (settings.brightness < MINIMUM_BRIGHTNESS) {
+				settings.brightness = MINIMUM_BRIGHTNESS;
+				beo.saveSettings("screen", settings, true);
+			}
 			applyBrightness(settings.brightness, false);
 		}
 	}
