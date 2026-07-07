@@ -36,7 +36,7 @@ test("1. server boots on :8080 and / serves the app shell", async ({request}) =>
 	expect(body).toContain('id="screen"');
 });
 
-test("2. UI loads without fatal JS errors and shows mock now-playing metadata", async ({page}) => {
+test("2. UI loads without fatal JS errors and shows mock now-playing metadata", async ({page, request}) => {
 	const errors = [];
 	await openApp(page, errors);
 
@@ -50,6 +50,18 @@ test("2. UI loads without fatal JS errors and shows mock now-playing metadata", 
 	fs.mkdirSync(path.join(__dirname, "screenshots"), {recursive: true});
 	await page.waitForTimeout(1500); // Allow artwork + transitions to settle.
 	await page.screenshot({path: path.join(__dirname, "screenshots", "now-playing.png")});
+
+	// Cover art: the DOM must point at the Beocreate server's artwork proxy,
+	// not at the localhost-only ACR address (remote browsers can't reach it).
+	const artworkImg = page.locator("#artwork-area-wide .artwork-wrap:visible img.artwork-img");
+	await expect(artworkImg).toHaveAttribute("src", env.serverURL + "/acr-artwork/coverart/mock.png", {timeout: 15000});
+
+	// Fetching that URL through the Beocreate server returns the mock's image.
+	const proxied = await request.get(env.serverURL + "/acr-artwork/coverart/mock.png");
+	expect(proxied.status()).toBe(200);
+	expect(proxied.headers()["content-type"]).toContain("image/png");
+	const direct = await request.get(env.acrURL + "/coverart/mock.png");
+	expect(Buffer.compare(await proxied.body(), await direct.body())).toBe(0);
 
 	expect(errors, "fatal page errors: " + errors.join("; ")).toEqual([]);
 });

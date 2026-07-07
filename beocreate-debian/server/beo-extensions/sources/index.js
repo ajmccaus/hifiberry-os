@@ -204,6 +204,51 @@ beo.bus.on("sources", function(event) {
 // the audiocontrol2 shapes the rest of this extension (and the untouched
 // client-side code) was built around.
 
+// COVER ART PROXY
+// ACR listens on localhost only, so artwork URLs that point at the ACR base
+// (http://127.0.0.1:1080/...) are unreachable for remote browsers. Metadata
+// sent to the client therefore carries a path relative to the Beocreate
+// server ("acr-artwork/<path>"), which the untouched client resolves against
+// window.location.hostname + ":" + picturePort. This route streams the image
+// from ACR server-side.
+beo.expressServer.get("/acr-artwork/*", function(req, res) {
+	remotePath = req.originalUrl.replace(/^\/acr-artwork/, ""); // Keeps the query string intact.
+	if (!remotePath || remotePath.charAt(0) != "/") {
+		res.status(404).send("Not found");
+		return;
+	}
+	acr.fetchRaw(remotePath).then(response => {
+		if (!response.ok) {
+			res.status(response.status).end();
+			return;
+		}
+		if (response.headers.get("content-type")) res.set("Content-Type", response.headers.get("content-type"));
+		if (response.headers.get("content-length")) res.set("Content-Length", response.headers.get("content-length"));
+		response.body.on("error", function() { res.end(); });
+		response.body.pipe(res);
+	}).catch(error => {
+		if (debug) console.log("Could not proxy artwork from ACR:", error.message);
+		res.status(502).end();
+	});
+});
+
+function artworkProxyURL(artUrl) {
+	// Turn an ACR artwork URL (relative, or absolute on the ACR base) into a
+	// path through the proxy route above. Truly external artwork URLs (e.g. a
+	// CDN) pass through untouched: the client uses http(s) URLs as-is.
+	if (!artUrl) return artUrl;
+	if (/^https?:\/\//i.test(artUrl)) {
+		base = acr.getAddress();
+		if (artUrl.toLowerCase().indexOf(base.toLowerCase() + "/") == 0) {
+			artUrl = artUrl.slice(base.length);
+		} else {
+			return artUrl;
+		}
+	}
+	if (artUrl.charAt(0) == "/") artUrl = artUrl.slice(1);
+	return "acr-artwork/" + artUrl;
+}
+
 var playerCapabilities = {}; // Last known capabilities per ACR player name (from capabilities_changed events).
 var defaultSupportedCommands = ["play", "pause", "playpause", "stop", "next", "previous"];
 
@@ -233,7 +278,7 @@ function translateNowPlayingToMetadata(json) {
 	if (!json || !json.player || !json.player.name) return null;
 	song = (json.song) ? json.song : {};
 	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
-	if (artUrl) artUrl = acr.absoluteURL(artUrl);
+	if (artUrl) artUrl = artworkProxyURL(artUrl); // hbosng port: served through this server so remote browsers can load it.
 	return {
 		playerName: json.player.name,
 		playerState: (json.state || json.player.state || "unknown").toLowerCase(),
@@ -356,7 +401,7 @@ acr.events.on("song_changed", function(event) {
 	if (!event.player_name) return;
 	song = (event.song) ? event.song : {};
 	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
-	if (artUrl) artUrl = acr.absoluteURL(artUrl);
+	if (artUrl) artUrl = artworkProxyURL(artUrl); // hbosng port: served through this server so remote browsers can load it.
 	[extension] = matchAudioControlSourceToExtension(event.player_name);
 	currentState = (extension && allSources[extension]) ? allSources[extension].playerState : "playing";
 	processAudioControlMetadata({
@@ -510,7 +555,7 @@ function processAudioControlMetadata(metadata) {
 			allSources[extension].metadata.loved = metadata.loved;
 			allSources[extension].metadata.picture = metadata.artUrl;
 			allSources[extension].metadata.externalPicture = metadata.externalArtUrl;
-			allSources[extension].metadata.picturePort = settings.port;
+			allSources[extension].metadata.picturePort = beo.systemConfiguration.port; // hbosng port: artwork is proxied by this server (see /acr-artwork), not audiocontrol2 on :81.
 			allSources[extension].metadata.uri = metadata.streamUrl;
 			//beo.bus.emit("sources", {header: "metadataChanged", content: {metadata: allSources[extension].metadata, extension: extension}});
 			metadataChanged = true;

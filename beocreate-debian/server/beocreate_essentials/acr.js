@@ -86,6 +86,12 @@ async function apiPost(path, body = undefined) {
 	}
 }
 
+// Fetch a raw (non-JSON) resource from the ACR service, e.g. cover art.
+// Returns the node-fetch response promise so callers can stream the body.
+function fetchRaw(path) {
+	return fetch(baseURL + path);
+}
+
 // PLAYERS
 
 function getPlayers() {
@@ -214,6 +220,7 @@ module.exports = {
 	configure: configure,
 	getAddress: getAddress,
 	absoluteURL: absoluteURL,
+	fetchRaw: fetchRaw,
 	apiGet: apiGet,
 	apiPost: apiPost,
 	getPlayers: getPlayers,
