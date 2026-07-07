@@ -1,0 +1,10 @@
+{
+  "name": "beocreate-mock-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock ACR + mock backlight sysfs for testing the Beocreate classic UI port",
+  "dependencies": {
+    "express": "^4.17.1",
+    "ws": "^8.18.0"
+  }
+}
