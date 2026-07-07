@@ -136,7 +136,12 @@ beo.bus.on("sources", function(event) {
 				if (allSources[extension].startable) {
 					beo.sendToUI("sources", {header: "starting", content: {extension: extension}});
 					if (allSources[extension].usesHifiberryControl) {
-						if (allSources[extension].aka) {
+						// hbosng port: prefer the player name ACR actually reported
+						// for this source (recorded when the player list/metadata was
+						// matched via aka) — e.g. Spotify may be named 'librespot'.
+						if (allSources[extension].acrPlayerName) {
+							sourceName = allSources[extension].acrPlayerName;
+						} else if (allSources[extension].aka) {
 							sourceName = allSources[extension].aka[0];
 						} else {
 							sourceName = extension;
@@ -569,9 +574,11 @@ function matchAudioControlSourceToExtension(acSource, data = null) {
     var childSource = null;
 
     if (acSource) {
+        var acrName = acSource; // hbosng port: the name exactly as ACR reported it.
         acSource = acSource.toLowerCase();
         if (allSources[acSource]) {
             extension = acSource;
+            allSources[extension].acrPlayerName = acrName; // hbosng port: remember for per-player ACR commands.
             if (allSources[extension].determineChildSource) {
                 childSource = allSources[extension].determineChildSource(data);
             }
@@ -588,6 +595,7 @@ function matchAudioControlSourceToExtension(acSource, data = null) {
                 // Check if acSource matches any of the aka values
                 if (aka.indexOf(acSource) !== -1) {
                     extension = source;
+                    allSources[extension].acrPlayerName = acrName; // hbosng port: e.g. 'librespot' for the spotify source.
                     if (allSources[extension].determineChildSource) {
                         childSource = allSources[extension].determineChildSource(data);
                     }

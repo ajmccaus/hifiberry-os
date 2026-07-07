@@ -16,6 +16,8 @@ Test-only state manipulation (each broadcasts the matching WS event):
 
 Environment:
   MOCK_ACR_PORT             port to listen on (default 1080)
+  MOCK_ACR_SPOTIFY_NAME     name of the Spotify-backed player (default
+                            "spotify"; real devices may report "librespot")
   MOCK_ACR_VOLUME_AVAILABLE "0" simulates a system without a volume control:
                             /api/volume/info reports available:false and the
                             other /api/volume endpoints fail
@@ -26,6 +28,7 @@ const http = require("http");
 const WebSocket = require("ws");
 
 const port = parseInt(process.env.MOCK_ACR_PORT || "1080", 10);
+const spotifyPlayerName = process.env.MOCK_ACR_SPOTIFY_NAME || "spotify";
 const volumeAvailable = process.env.MOCK_ACR_VOLUME_AVAILABLE !== "0";
 
 // A generated 240x240 two-tone PNG used as mock cover art.
@@ -69,8 +72,8 @@ const state = {
 			last_seen: new Date().toISOString()
 		},
 		{
-			name: "spotify",
-			id: "spotify",
+			name: spotifyPlayerName,
+			id: spotifyPlayerName,
 			state: "Playing",
 			is_active: true,
 			has_library: false,
