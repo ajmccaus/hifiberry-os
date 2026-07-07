@@ -231,9 +231,6 @@ var acr = require('../../beocreate_essentials/acr');
 		if (setVolumeLevel > 100) setVolumeLevel = 100;
 		if (debug >= 2) console.log("Setting volume: "+setVolumeLevel+" %.");
 		switch (volumeControl) {
-			case 0: // No volume control.
-				callback(null);
-				break;
 			case 1: // Talk to ACR.
 				setVolumeViaACR(mapVolume(setVolumeLevel, false), function(newVolume) {
 					reportVolume(newVolume, callback, true);
@@ -241,20 +238,31 @@ var acr = require('../../beocreate_essentials/acr');
 				break;
 			case 3: // Talk to the DSP directly.
 				break;
+			case 0: // No volume control.
+			default:
+				// hbosng port: guard — 'setVolume' arrives from the UI without a
+				// callback, so calling callback(null) unguarded crashed the
+				// server when no volume control was available. Report the
+				// unavailability to the UI the same way getVolume does.
+				if (debug) console.log("Volume set requested, but the system has no volume control.");
+				beo.sendToUI("sound", {header: "systemVolume", content: {volume: systemVolume, volumeControl: volumeControl}});
+				if (callback) callback(null);
+				break;
 		}
 	}
 
 	function getVolume(callback) {
 		switch (volumeControl) {
-			case 0: // No volume control.
-				if (callback) callback(null);
-				break;
 			case 1: // Talk to ACR.
 				getVolumeViaACR(function(newVolume) {
 					reportVolume(newVolume, callback);
 				});
 				break;
 			case 2: // Talk to the DSP directly.
+				break;
+			case 0: // No volume control.
+			default: // hbosng port: volumeControl can also be false (no control detected).
+				if (callback) callback(null);
 				break;
 		}
 	}

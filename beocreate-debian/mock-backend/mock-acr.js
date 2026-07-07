@@ -14,7 +14,11 @@ Test-only state manipulation (each broadcasts the matching WS event):
   POST /__test/volume            -> {percentage}      (emits volume_changed)
   POST /__test/event             -> broadcast a raw event object as-is
 
-Environment: MOCK_ACR_PORT (default 1080).
+Environment:
+  MOCK_ACR_PORT             port to listen on (default 1080)
+  MOCK_ACR_VOLUME_AVAILABLE "0" simulates a system without a volume control:
+                            /api/volume/info reports available:false and the
+                            other /api/volume endpoints fail
 */
 
 const express = require("express");
@@ -22,6 +26,7 @@ const http = require("http");
 const WebSocket = require("ws");
 
 const port = parseInt(process.env.MOCK_ACR_PORT || "1080", 10);
+const volumeAvailable = process.env.MOCK_ACR_VOLUME_AVAILABLE !== "0";
 
 // A generated 240x240 two-tone PNG used as mock cover art.
 const COVER_PNG = Buffer.from(
@@ -157,6 +162,7 @@ function emitSongChanged(player) {
 function emitVolumeChanged() {
 	// NOTE: volume events are not covered by the upstream websocket.md;
 	// this shape is this project's assumption (documented in PORTING.md).
+	if (!volumeAvailable) return;
 	broadcast(Object.assign({type: "volume_changed"}, volumeState()));
 }
 
@@ -304,6 +310,14 @@ app.get("/api/player/:name/meta", (req, res) => {
 // VOLUME
 
 app.get("/api/volume/info", (req, res) => {
+	if (!volumeAvailable) {
+		return res.json({
+			available: false,
+			control_info: null,
+			current_state: null,
+			supports_change_monitoring: false
+		});
+	}
 	res.json({
 		available: true,
 		control_info: {
@@ -316,9 +330,16 @@ app.get("/api/volume/info", (req, res) => {
 	});
 });
 
-app.get("/api/volume/state", (req, res) => res.json(volumeState()));
+function volumeUnavailable(req, res, next) {
+	if (!volumeAvailable) {
+		return res.status(404).json({success: false, message: "No volume control available", new_state: null});
+	}
+	next();
+}
 
-app.post("/api/volume/set", (req, res) => {
+app.get("/api/volume/state", volumeUnavailable, (req, res) => res.json(volumeState()));
+
+app.post("/api/volume/set", volumeUnavailable, (req, res) => {
 	const body = req.body || {};
 	let pct = null;
 	if (body.percentage != null) {
@@ -339,21 +360,21 @@ app.post("/api/volume/set", (req, res) => {
 	res.json({success: true, message: "Volume set successfully", new_state: volumeState()});
 });
 
-app.post("/api/volume/increase", (req, res) => {
+app.post("/api/volume/increase", volumeUnavailable, (req, res) => {
 	const amount = parseFloat(req.query.amount || "5");
 	state.volume.percentage = Math.min(100, state.volume.percentage + amount);
 	emitVolumeChanged();
 	res.json({success: true, message: "Volume increased to " + state.volume.percentage + "%", new_state: volumeState()});
 });
 
-app.post("/api/volume/decrease", (req, res) => {
+app.post("/api/volume/decrease", volumeUnavailable, (req, res) => {
 	const amount = parseFloat(req.query.amount || "5");
 	state.volume.percentage = Math.max(0, state.volume.percentage - amount);
 	emitVolumeChanged();
 	res.json({success: true, message: "Volume decreased to " + state.volume.percentage + "%", new_state: volumeState()});
 });
 
-app.post("/api/volume/mute", (req, res) => {
+app.post("/api/volume/mute", volumeUnavailable, (req, res) => {
 	state.volume.percentage = (state.volume.percentage === 0) ? 50 : 0;
 	emitVolumeChanged();
 	res.json({success: true, message: "Volume muted at " + state.volume.percentage + "%", new_state: volumeState()});

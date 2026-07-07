@@ -61,7 +61,10 @@ async function waitFor(fn, description, timeoutMs = 20000, intervalMs = 200) {
 
 class BeoEnv {
 
-	constructor() {
+	// options.acrEnv: extra environment variables for the mock ACR process
+	// (e.g. {MOCK_ACR_SPOTIFY_NAME: "librespot", MOCK_ACR_VOLUME_AVAILABLE: "0"}).
+	constructor(options = {}) {
+		this.acrEnv = options.acrEnv || {};
 		this.acrProcess = null;
 		this.serverProcess = null;
 		this.workDir = null;
@@ -93,7 +96,7 @@ class BeoEnv {
 
 		// Mock ACR.
 		this.acrProcess = spawn("node", [path.join(MOCK_DIR, "mock-acr.js")], {
-			env: Object.assign({}, process.env, {MOCK_ACR_PORT: String(ACR_PORT)}),
+			env: Object.assign({}, process.env, {MOCK_ACR_PORT: String(ACR_PORT)}, this.acrEnv),
 			stdio: ["ignore", "inherit", "inherit"]
 		});
 		await waitFor(async () => (await httpGet(this.acrURL + "/api/version")).status === 200, "mock ACR");
@@ -193,6 +196,10 @@ class BeoEnv {
 		const file = path.join(this.configDir, "screen.json");
 		if (!fs.existsSync(file)) return null;
 		return JSON.parse(fs.readFileSync(file, "utf8"));
+	}
+
+	writeScreenSettings(settings) {
+		fs.writeFileSync(path.join(this.configDir, "screen.json"), JSON.stringify(settings));
 	}
 }
 
