@@ -24,6 +24,8 @@ endef
 define TOUCH_TIMEOUT_INSTALL_INIT_SYSTEMD
 	$(INSTALL) -D -m 0644 $(@D)/systemd/touch-timeout.service \
 		$(TARGET_DIR)/usr/lib/systemd/system/touch-timeout.service
+	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/touch-timeout/10-only-with-backlight.conf \
+		$(TARGET_DIR)/usr/lib/systemd/system/touch-timeout.service.d/10-only-with-backlight.conf
 	mkdir -p $(TARGET_DIR)/etc/systemd/system/multi-user.target.wants
 	ln -sf ../../../../usr/lib/systemd/system/touch-timeout.service \
 		$(TARGET_DIR)/etc/systemd/system/multi-user.target.wants/touch-timeout.service
