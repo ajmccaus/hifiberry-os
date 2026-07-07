@@ -292,7 +292,7 @@ var connectTimeoutCycle = 0;
 function connectDSP(callback, socketAddress) {
 	if (!dspConnected) {
 		keepAlive = true;
-		if (!socketAddress) socketAddress = '127.0.1.1';
+		if (!socketAddress) socketAddress = process.env.BEO_DSP_ADDRESS || '127.0.0.1'; // hbosng port: sigmatcpserver runs with --localhost (was 127.0.1.1 on buildroot).
 		if (callback) connectCallback = callback;
 		dspClient.connect(8086, socketAddress);
 	} else {

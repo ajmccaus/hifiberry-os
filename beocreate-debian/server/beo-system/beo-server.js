@@ -67,7 +67,7 @@ var systemStatus = "normal";
 var extensionsRequestingShutdownTime = [];
 
 systemDirectory = __dirname;
-dataDirectory = "/etc/beocreate"; // Data directory for settings, sound presets, product images, etc.
+dataDirectory = process.env.BEO_CONFIG_DIR || "/etc/beocreate"; // Data directory for settings, sound presets, product images, etc. Overridable for testing (hbosng port).
 
 var debugMode = false;
 var daemonMode = false;

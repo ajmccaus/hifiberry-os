@@ -16,8 +16,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
 // BEOCREATE SOURCES
-var fetch = require("node-fetch");
+// hbosng port: player control and metadata come from the ACR service
+// (REST + WebSocket event stream) instead of audiocontrol2 on port 81.
 var exec = require("child_process").exec;
+var acr = require("../../beocreate_essentials/acr");
 
 var debug = beo.debug;
 
@@ -57,11 +59,13 @@ beo.bus.on('general', function(event) {
 	//console.dir(event);
 	
 	if (event.header == "startup") {
-		
-		
+
+		acr.configure({address: beo.systemConfiguration.acrAddress, debug: debug});
+		acr.startEvents();
+
 	}
-	
-	
+
+
 	if (event.header == "activatedExtension") {
 		if (event.content.extension == "sources") {
 			if (!checkingEnabled) checkEnabled();
@@ -190,33 +194,84 @@ beo.bus.on("sources", function(event) {
 });
 
 
-// HIFIBERRY AUDIOCONTROL INTEGRATION
+// HIFIBERRY AUDIO CONTROL (ACR) INTEGRATION
+// These functions translate the documented ACR REST/WebSocket payloads into
+// the audiocontrol2 shapes the rest of this extension (and the untouched
+// client-side code) was built around.
 
+var playerCapabilities = {}; // Last known capabilities per ACR player name (from capabilities_changed events).
+var defaultSupportedCommands = ["play", "pause", "playpause", "stop", "next", "previous"];
+
+function supportedCommandsForPlayer(playerName) {
+	if (playerName && playerCapabilities[playerName.toLowerCase()]) {
+		return playerCapabilities[playerName.toLowerCase()];
+	}
+	return defaultSupportedCommands.slice();
+}
+
+function translatePlayersToStatus(json) {
+	// ACR GET /api/players -> audiocontrol2 /api/player/status shape.
+	if (!json || !json.players) return null;
+	players = [];
+	for (var i = 0; i < json.players.length; i++) {
+		players.push({
+			name: json.players[i].name,
+			state: (json.players[i].state || "unknown").toLowerCase(),
+			supported_commands: supportedCommandsForPlayer(json.players[i].name)
+		});
+	}
+	return {players: players, last_updated: new Date().toISOString()};
+}
+
+function translateNowPlayingToMetadata(json) {
+	// ACR GET /api/now-playing -> audiocontrol2 /api/track/metadata shape.
+	if (!json || !json.player || !json.player.name) return null;
+	song = (json.song) ? json.song : {};
+	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
+	if (artUrl) artUrl = acr.absoluteURL(artUrl);
+	return {
+		playerName: json.player.name,
+		playerState: (json.state || json.player.state || "unknown").toLowerCase(),
+		title: (song.title != undefined) ? song.title : song.name,
+		artist: song.artist,
+		albumTitle: song.album,
+		artUrl: artUrl,
+		externalArtUrl: null,
+		streamUrl: song.uri,
+		loved: false,
+		loveSupported: false
+	};
+}
 
 function audioControlGet(dataType, callback) {
 	switch (dataType) {
 		case "metadata":
-			endpoint = "/api/track/metadata";
-			processor = processAudioControlMetadata;
+			acr.getNowPlaying().then(json => {
+				metadata = translateNowPlayingToMetadata(json);
+				if (metadata) {
+					processAudioControlMetadata(metadata);
+					if (callback) callback(true);
+				} else {
+					if (debug) console.log("No now-playing data retrieved from ACR.");
+					if (callback) callback(false);
+				}
+			});
 			break;
 		case "status":
-			endpoint = "/api/player/status";
-			processor = processAudioControlStatus;
-			break;
-	}
-	if (endpoint && processor) {
-		fetch("http://127.0.1.1:"+settings.port+endpoint).then(res => {
-			if (res.status == 200) {
-				res.json().then(json => {
-					processor(json);
+			acr.getPlayers().then(json => {
+				overview = translatePlayersToStatus(json);
+				if (overview) {
+					processAudioControlStatus(overview);
 					if (callback) callback(true);
-				});
-			} else {
-				// No content.
-				if (debug) console.log("Error retrieving data from AudioControl:", res.status, res.statusText, res.text);
-				if (callback) callback(false);
-			}
-		});
+				} else {
+					if (debug) console.log("No player list retrieved from ACR.");
+					if (callback) callback(false);
+				}
+			});
+			break;
+		default:
+			if (callback) callback(false);
+			break;
 	}
 }
 
@@ -229,27 +284,115 @@ function audioControl(operation, extra, callback) {
 		case "stop":
 		case "next":
 		case "previous":
-			endpoint = "/api/player/"+operation.toLowerCase();
+			// Send to the active player: POST /api/player/active/send/<command>.
+			acr.sendActiveCommand(operation.toLowerCase()).then(result => {
+				if (result && result.success != false) {
+					if (callback) callback(true);
+				} else {
+					if (debug) console.log("Could not send ACR player command '"+operation+"'.");
+					if (callback) callback(false);
+				}
+			});
 			break;
 		case "start":
-			endpoint = "/api/player/activate/"+extra;
+			// Activate a source by starting playback on the named player:
+			// POST /api/player/<player-name>/command/play.
+			acr.sendPlayerCommand(extra, "play").then(result => {
+				if (result && result.success != false) {
+					if (callback) callback(true);
+				} else {
+					if (debug) console.log("Could not start ACR player '"+extra+"'.");
+					if (callback) callback(false);
+				}
+			});
 			break;
 		case "love":
 		case "unlove":
-			endpoint = "/api/track/"+operation.toLowerCase();
+			// Favourites are not part of this port (ACR has /api/favourites, but
+			// sources marks loveSupported false). Report failure.
+			if (callback) callback(false);
+			break;
+		default:
+			if (callback) callback(false);
 			break;
 	}
-	if (endpoint) {
-		fetch("http://127.0.1.1:"+settings.port+endpoint, {method: "post"}).then(res => {
-			if (res.status == 200) {
-				if (callback) callback(true);
-			} else {
-				if (debug) console.log("Could not send HiFiBerry control command: " + res.status, res.statusText);
-				if (callback) callback(false, res.statusText);
-			}
+}
+
+
+// ACR EVENT STREAM
+// Translate pushed events onto the same processing functions that
+// audiocontrol2 used to feed via HTTP callbacks, so downstream logic and
+// the client-side code stay unchanged.
+
+acr.events.on("connected", function() {
+	// (Re)connected to the event stream: resynchronise the full state.
+	if (sourcesRegistered) {
+		audioControlGet("status", function() {
+			audioControlGet("metadata");
 		});
 	}
-}
+});
+
+acr.events.on("state_changed", function(event) {
+	if (!event.player_name) return;
+	processAudioControlStatus({
+		players: [{
+			name: event.player_name,
+			state: (event.state || "unknown").toLowerCase(),
+			supported_commands: supportedCommandsForPlayer(event.player_name)
+		}],
+		last_updated: new Date().toISOString()
+	});
+	// Pull fresh metadata for the now-active player.
+	audioControlGet("metadata");
+});
+
+acr.events.on("song_changed", function(event) {
+	if (!event.player_name) return;
+	song = (event.song) ? event.song : {};
+	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
+	if (artUrl) artUrl = acr.absoluteURL(artUrl);
+	[extension] = matchAudioControlSourceToExtension(event.player_name);
+	currentState = (extension && allSources[extension]) ? allSources[extension].playerState : "playing";
+	processAudioControlMetadata({
+		playerName: event.player_name,
+		playerState: currentState,
+		title: (song.title != undefined) ? song.title : song.name,
+		artist: song.artist,
+		albumTitle: song.album,
+		artUrl: artUrl,
+		externalArtUrl: null,
+		streamUrl: song.uri,
+		loved: false,
+		loveSupported: false
+	});
+});
+
+acr.events.on("metadata_changed", function(event) {
+	// Metadata updates reuse the song_changed translation.
+	if (!event.player_name || !event.metadata) return;
+	acr.events.emit("song_changed", {player_name: event.player_name, song: event.metadata});
+});
+
+acr.events.on("capabilities_changed", function(event) {
+	if (!event.player_name || !event.capabilities) return;
+	caps = [];
+	for (c in event.capabilities) {
+		caps.push(String(event.capabilities[c]).toLowerCase());
+	}
+	playerCapabilities[event.player_name.toLowerCase()] = caps;
+	// Refresh transport controls, preserving the current state of the source.
+	[extension] = matchAudioControlSourceToExtension(event.player_name);
+	currentState = (extension && allSources[extension] && allSources[extension].playerState) ? allSources[extension].playerState : "unknown";
+	processAudioControlStatus({
+		players: [{
+			name: event.player_name,
+			state: currentState,
+			supported_commands: caps
+		}],
+		last_updated: new Date().toISOString()
+	});
+});
 
 
 
@@ -325,7 +468,7 @@ var currentAudioControlSource = null;
 function processAudioControlMetadata(metadata) {
 
 	[extension, childSource] = matchAudioControlSourceToExtension(metadata.playerName, metadata);
-	if (extension) {
+	if (extension && allSources[extension]) { // hbosng port: guard against players whose extension isn't installed (e.g. 'bluetooth' fallback).
 		if (allSources[extension].childSource && allSources[extension].childSource != childSource) {
 			sourceDeactivated(allSources[extension].childSource, "stopped");
 			allSources[allSources[extension].childSource].parentSource = null;
@@ -842,8 +985,7 @@ function checkEnabled(queue, callback) {
 
 function stopAllSources() {
 	// Stop currently active sources, if the source demands it.
-	execSync = require("child_process").execSync;
-	execSync("/opt/hifiberry/bin/pause-all");
+	acr.apiPost("/api/players/pause-all"); // hbosng port: was /opt/hifiberry/bin/pause-all.
 	for (source in allSources) {
 		if (allSources[source].active) {
 			if (!allSources[source].usesHifiberryControl) {

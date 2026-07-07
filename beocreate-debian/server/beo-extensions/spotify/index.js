@@ -19,6 +19,7 @@ SOFTWARE.*/
 
 var exec = require("child_process").exec;
 var fs = require("fs");
+var acr = require("../../beocreate_essentials/acr"); // hbosng port.
 
 	var debug = beo.debug;
 	var version = require("./package.json").version;
@@ -48,18 +49,14 @@ var fs = require("fs");
 						enabled: enabled,
 						transportControls: true,
 						usesHifiberryControl: true,
-						aka: "spotify"
+						aka: ["spotify", "librespot", "spotifyd", "vollibrespot"] // hbosng port: ACR may report the player under these names.
 					});
 				});
 			}
-			
+
 			readConfiguration();
-			// Check login here (removed).
-			if (sources && Object.keys(configuration).length == 0) {
-				sources.setSourceOptions("spotify", {
-					enabled: false
-				});
-			}
+			// hbosng port: enablement now comes from ACR (above); the
+			// vollibrespot.conf check no longer decides whether Spotify exists.
 		}
 		
 		if (event.header == "activatedExtension") {
@@ -137,13 +134,23 @@ var fs = require("fs");
 	
 	
 	function getspotifyStatus(callback) {
-		exec("systemctl is-active --quiet spotify.service").on('exit', function(code) {
-			if (code == 0) {
-				settings.spotifyEnabled = true;
-				callback(true);
+		// hbosng port: Spotify counts as enabled when the ACR service reports
+		// a spotify/librespot player. Falls back to systemd if ACR is down.
+		spotifyPlayerNames = ["spotify", "librespot", "spotifyd", "vollibrespot"];
+		acr.getPlayers().then(json => {
+			if (json && json.players) {
+				settings.spotifyEnabled = json.players.some(player => player.name && spotifyPlayerNames.indexOf(player.name.toLowerCase()) != -1);
+				callback(settings.spotifyEnabled);
 			} else {
-				settings.spotifyEnabled = false;
-				callback(false);
+				exec("systemctl is-active --quiet spotify.service").on('exit', function(code) {
+					if (code == 0) {
+						settings.spotifyEnabled = true;
+						callback(true);
+					} else {
+						settings.spotifyEnabled = false;
+						callback(false);
+					}
+				});
 			}
 		});
 	}

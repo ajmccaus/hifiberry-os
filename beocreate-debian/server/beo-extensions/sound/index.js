@@ -17,11 +17,11 @@ SOFTWARE.*/
 
 // BEOCREATE SYSTEM SOUND EXTENSION
 // Mainly handles volume control.
+// hbosng port: system volume is controlled through the ACR service
+// (/api/volume/*) instead of amixer/audiocontrol2.
 
-var exec = require('child_process').exec;
-var execFile = require('child_process').execFile;
 var beoDSP = require('../../beocreate_essentials/dsp');
-var fetch = require("node-fetch");
+var acr = require('../../beocreate_essentials/acr');
 
 
 
@@ -48,11 +48,10 @@ var fetch = require("node-fetch");
 	var previousVolume = 0; // Previous volume level. Used to compare if volume has changed.
 	
 	// Determine which method to use for volume control.
-	var volumeControl = false; // 0 = no volume control, 1 = ALSA, 2 = direct DSP control.
-	var audioControlAvailable = false;
+	var volumeControl = false; // 0 = no volume control, 1 = ACR system volume, 2 = direct DSP control.
+	var acrVolumeAvailable = false;
 	var directDSPVolumeControlAvailable = false;
 	var alsaDSPVolumeControlAvailable = false;
-	var alsaMixer = null;
 	var volumeControlRange = [0, 100];
 	
 	beo.bus.on('general', function(event) {
@@ -62,16 +61,15 @@ var fetch = require("node-fetch");
 		//console.dir(event);
 		
 		if (event.header == "startup") {
-			
+
 			if (beo.systemConfiguration.cardType.indexOf("Beocreate") != -1) {
-				
+
 			}
-			
-			checkIfAudioControlAvailable(function() {
-				getALSAMixers(function() {
-					determineVolumeControl();
-					getVolume();
-				});
+
+			acr.configure({address: beo.systemConfiguration.acrAddress, debug: debug});
+			checkIfACRVolumeAvailable(function() {
+				determineVolumeControl();
+				getVolume();
 			});
 		}
 		
@@ -149,10 +147,10 @@ var fetch = require("node-fetch");
 				setVolume(event.content);
 				break;
 			case "setVolumeAudioControl":
-				setVolumeViaAudioControl(event.content);
+				setVolumeViaACR(event.content);
 				break;
 			case "getVolumeAudioControl":
-				getVolumeViaAudioControl(console.log);
+				getVolumeViaACR(console.log);
 				break;
 			case "mute":
 				fade = false;
@@ -194,13 +192,13 @@ var fetch = require("node-fetch");
 		// Based on what is currently known about the system, which volume control method should be used?
 		volumeControl = false;
 		if (directDSPVolumeControlAvailable) volumeControl = 2; // Direct DSP control.
-		if (alsaMixer) volumeControl = 1; // ALSA control.
-		
+		if (acrVolumeAvailable) volumeControl = 1; // ACR system volume control.
+
 		if (debug) {
 			if (volumeControl == 0) console.log("System has no volume control.");
-			if (volumeControl == 1) console.log("Volume control is via ALSA ('"+alsaMixer+"').");
+			if (volumeControl == 1) console.log("Volume control is via ACR system volume.");
 			if (volumeControl == 2) console.log("Volume control is via direct DSP control.");
-			
+
 			if (volumeControlRange[0] != 0 || volumeControlRange[1] != 100) console.log("Volume control range maps to "+volumeControlRange[0]+"-"+volumeControlRange[1]+".");
 		}
 	}
@@ -236,8 +234,8 @@ var fetch = require("node-fetch");
 			case 0: // No volume control.
 				callback(null);
 				break;
-			case 1: // Talk to ALSA.
-				setVolumeViaALSA(mapVolume(setVolumeLevel, false), function(newVolume) {
+			case 1: // Talk to ACR.
+				setVolumeViaACR(mapVolume(setVolumeLevel, false), function(newVolume) {
 					reportVolume(newVolume, callback, true);
 				});
 				break;
@@ -245,14 +243,14 @@ var fetch = require("node-fetch");
 				break;
 		}
 	}
-	
+
 	function getVolume(callback) {
 		switch (volumeControl) {
 			case 0: // No volume control.
 				if (callback) callback(null);
 				break;
-			case 1: // Talk to ALSA.
-				getVolumeViaALSA(function(newVolume) {
+			case 1: // Talk to ACR.
+				getVolumeViaACR(function(newVolume) {
 					reportVolume(newVolume, callback);
 				});
 				break;
@@ -340,149 +338,80 @@ var fetch = require("node-fetch");
 	}	
 	
 	
-	function checkIfAudioControlAvailable(callback) {
-		// Try getting and setting volume via AudioControl:
-		audioControlAvailable = false;
-		getVolumeViaAudioControl(function(volume) {
-			if (volume != null) {
-				// Got a value. Write it back to AudioControl.
-				audioControlAvailable = true;
-				if (callback) callback();
+	function checkIfACRVolumeAvailable(callback) {
+		// Ask ACR whether a system volume control exists (GET /api/volume/info).
+		acrVolumeAvailable = false;
+		acr.getVolumeInfo().then(json => {
+			if (json && json.available) {
+				acrVolumeAvailable = true;
+				if (json.current_state && json.current_state.percentage != undefined) {
+					reportVolume(json.current_state.percentage);
+				}
+			}
+			if (callback) callback();
+		});
+	}
+
+
+	function setVolumeViaACR(volume, callback) {
+		// POST /api/volume/set with a percentage value.
+		acr.setVolume(volume).then(result => {
+			if (result && result.success != false) {
+				newVolume = (result.new_state && result.new_state.percentage != undefined) ? result.new_state.percentage : volume;
+				if (debug >= 2) console.log("ACR system volume set to "+newVolume+" %.");
+				if (callback) callback(newVolume);
 			} else {
-				if (callback) callback();
+				console.error("Error setting volume via ACR.");
+				if (callback) callback(null, true);
 			}
 		});
 	}
 
-	
-	function getVolumeViaAudioControl(callback) {
-		if (callback) {
-			fetch("http://127.0.1.1:"+sourcesSettings.port+"/api/volume").then(res => {
-				if (res.status == 200) {
-					res.json().then(json => {
-						try {
-							if (json.percent != undefined) {
-								callback(json.percent);
-							} else {
-								callback(null);
-								if (debug) console.error("Volume value not returned.");
-							}
-						} catch (error) {
-							callback(null);
-							if (debug) console.error("Volume control not set up properly.");
-						}
-					});
-				} else {
-					callback(null);
-					if (debug) console.error("Could not retrieve volume: " + res.status, res.statusText);
-				}
-			});
+	function getVolumeViaACR(callback) {
+		// GET /api/volume/state.
+		acr.getVolumeState().then(json => {
+			if (json && json.percentage != undefined) {
+				if (callback) callback(json.percentage);
+			} else {
+				if (callback) callback(null, true);
+			}
+		});
+	}
+
+	// Volume changes made elsewhere (hardware buttons, other UIs) arrive on
+	// the shared ACR event stream.
+	acr.events.on("volume_changed", function(event) {
+		percentage = undefined;
+		if (event.percentage != undefined) percentage = event.percentage;
+		else if (event.volume && event.volume.percentage != undefined) percentage = event.volume.percentage;
+		else if (event.current_state && event.current_state.percentage != undefined) percentage = event.current_state.percentage;
+		if (percentage != undefined) {
+			if (debug >= 2) console.log("Volume received from ACR event stream: "+percentage+" %.");
+			if (!acrVolumeAvailable) {
+				acrVolumeAvailable = true;
+				determineVolumeControl();
+			}
+			reportVolume(percentage);
 		}
-	}
-	
+	});
 
-	var allMixers = [];
-	
-	function getALSAMixers(callback) {
-		exec("amixer scontrols", function(error, stdout, stderr) {
-			if (error) {
-				//callback(null, error);
-			} else {
-				allMixers = [];
-				alsaMixer = null;
-				mixers = stdout.match(/'(.*?)'/g);
-				for (var i = 0; i < mixers.length; i++) {
-					mixer = mixers[i].slice(1, -1);
-					allMixers.push(mixer);
-				}
-				if (debug >= 2) console.log("Available ALSA mixer controls: "+ allMixers.join(", ") + ".");
-				determineALSAMixer();
-				if (callback) callback();
-			}
-		});
-	}
-	
-	function determineALSAMixer(callback) {
-		// Determines which ALSA mixer control is suitable to use.
-		alsaMixer = null;
-		
-		if (settings.mixer) {
-			if (!alsaMixer && allMixers.indexOf(settings.mixer) != -1) {
-				if (debug >= 2) console.log("The ALSA mixer specified in settings ('"+settings.mixer+"') is available.");
-				alsaMixer = settings.mixer;
-			} else {
-				if (debug >= 2) console.log("The ALSA mixer specified in settings ('"+settings.mixer+"') is not available.");
-			}
+	acr.events.on("connected", function() {
+		// Resynchronise volume after (re)connecting to the event stream.
+		if (!acrVolumeAvailable) {
+			checkIfACRVolumeAvailable(function() {
+				determineVolumeControl();
+				getVolume();
+			});
 		} else {
-			if (debug) console.log("ALSA mixer was not specified in settings.");
-			for (var i = 0; i < allMixers.length; i++) {
-				if (alsaMixer == null) {
-					switch (allMixers[i]) {
-						case "DSPVolume":
-							if (alsaDSPVolumeControlAvailable) {
-								alsaMixer = "DSPVolume";
-								if (debug >= 2) console.log("ALSA DSP volume control is available.");
-							}
-							break;
-						case "Softvol":
-							break;
-					}
-				}
-			}
+			getVolume();
 		}
-		if (!alsaMixer) {
-			if (debug >= 2) console.log("Falling back to software volume control.");
-			if (allMixers.indexOf("Softvol") != -1) alsaMixer = "Softvol";
-		}
-		if (callback) callback(alsaMixer);
-	}
+	});
 
-	
-	function setVolumeViaALSA(volume, callback, mixer = alsaMixer) {
-		volume += "%";
-		execFile("amixer", ["set", mixer, volume], function(error, stdout, stderr) {
-			if (error) {
-				console.error("Error adjusting ALSA mixer control '"+mixer+"':", error);
-				if (callback) callback(null, error);
-			} else {
-				newVolume = parseFloat(stdout.match(/\[(.*?)\]/)[0].slice(1, -2));
-				if (debug >= 2) console.log("ALSA mixer control '"+mixer+"' set to "+newVolume+" %.");
-				if (callback) callback(newVolume);
-			}
-		});
-	}
-	
-	function getVolumeViaALSA(callback, mixer = alsaMixer) {
-		exec("amixer get \""+mixer+"\"", function(error, stdout, stderr) {
-			if (error) {
-				if (callback) callback(null, error);
-			} else {
-				newVolume = parseFloat(stdout.match(/\[(.*?)\]/)[0].slice(1, -2));
-				if (callback) callback(newVolume);
-			}
-		});
-	}
-	
 	function checkCurrentMixerAndReconfigure() {
-		if (settings.mixer && settings.mixer == "Softvol" && directDSPVolumeControlAvailable) {
-			console.log("DSP volume control is available but system is configured for software mixer. Calling HiFiBerry reconfiguration script.");
-			beo.sendToUI("sources", {header: "configuringSystem", content: {reason: "mixerChanged"}});
-
-			exec("/opt/hifiberry/bin/reconfigure-players", function(error, stdout, stderr) {
-				if (error) {
-					if (debug) console.error("Reconfiguration failed: "+error);
-				} else {
-					if (debug) console.error("Reconfiguration finished.");
-				}
-				beo.sendToUI("sources", {header: "systemConfigured"});
-				// Get current settings.
-				settings = Object.assign(settings, beo.getSettings("sound"));
-				getALSAMixers(function() {
-					determineVolumeControl();
-					getVolume();
-				});
-			});
-		}
+		// hbosng port: mixer reconfiguration was a buildroot HiFiBerryOS
+		// mechanism (reconfigure-players). ACR owns the volume pipeline now,
+		// so there is nothing to reconfigure here.
+		if (debug) console.log("checkCurrentMixerAndReconfigure: not applicable on this platform.");
 	}
 	
 	function mapVolume(value, toFullScale) {
@@ -561,8 +490,8 @@ module.exports = {
 	checkCurrentMixerAndReconfigure: checkCurrentMixerAndReconfigure,
 	mute: mute,
 	interact: interact,
-	alsaSet: setVolumeViaALSA,
-	alsaGet: getVolumeViaALSA,
+	alsaSet: setVolumeViaACR, // hbosng port: kept for API compatibility, now routed to ACR.
+	alsaGet: getVolumeViaACR,
 	setVolumeControlRange: setVolumeControlRange,
 	getVolumeControlRange: getVolumeControlRange
 };

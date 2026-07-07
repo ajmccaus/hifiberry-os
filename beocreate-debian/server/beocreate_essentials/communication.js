@@ -167,6 +167,7 @@ BeoCom.prototype.startBonjour = function(options, callback) {
 		} else {
 			advertisePort = wsPort;
 		}
+		try { // hbosng port: don't crash the server if mDNS is unavailable (containers, restricted networks).
 		if (options.txtRecord) {
 			announceService = new dnssd.Advertisement(dnssd.tcp(serviceType), advertisePort, { name: options.name, txt: options.txtRecord });
 			//announceService = bonjour.publish({name: options.name, port: advertisePort, type: serviceType, txt: options.txtRecord}); // bonjour
@@ -177,7 +178,13 @@ BeoCom.prototype.startBonjour = function(options, callback) {
 		}
 		announceService.start();
 		bonjourStarted = true;
-		
+		} catch (error) {
+			console.error("Could not start Bonjour advertisement:", error.message);
+			bonjourStarted = false;
+			if (callback) callback(false);
+			return;
+		}
+
 		announceService.on("up", function(error) {
 			bonjourStarted = true;
 		});

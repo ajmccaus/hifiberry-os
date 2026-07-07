@@ -24,6 +24,7 @@ var path = require("path");
 var fs = require("fs");
 var mpdAPI = require("mpd-api");
 var mpdCmd = mpdAPI.mpd;
+var acr = require("../../beocreate_essentials/acr"); // hbosng port.
 const util = require('util');
 const execPromise = util.promisify(exec);
 const dnssd = require("dnssd2"); // for service discovery.
@@ -221,13 +222,22 @@ beo.bus.on('mpd', function(event) {
 });
 
 function getMPDStatus(callback) {
-	exec("systemctl is-active --quiet mpd.service").on('exit', function(code) {
-		if (code == 0) {
-			mpdEnabled = true;
-			callback(true);
+	// hbosng port: MPD counts as enabled when the ACR service reports an
+	// "mpd" player. Falls back to systemd if ACR can't be reached.
+	acr.getPlayers().then(json => {
+		if (json && json.players) {
+			mpdEnabled = json.players.some(player => player.name && player.name.toLowerCase() == "mpd");
+			callback(mpdEnabled);
 		} else {
-			mpdEnabled = false;
-			callback(false);
+			exec("systemctl is-active --quiet mpd.service").on('exit', function(code) {
+				if (code == 0) {
+					mpdEnabled = true;
+					callback(true);
+				} else {
+					mpdEnabled = false;
+					callback(false);
+				}
+			});
 		}
 	});
 }
