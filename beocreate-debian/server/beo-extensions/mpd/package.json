@@ -1,0 +1,26 @@
+{
+  "name": "@beocreate/mpd",
+  "version": "0.8.1",
+  "description": "Control for MPD in BeoCreate systems",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bang-olufsen/create.git"
+  },
+  "keywords": [
+    "beocreate",
+    "mpd"
+  ],
+  "author": "Bang & Olufsen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bang-olufsen/create/issues"
+  },
+  "homepage": "https://github.com/bang-olufsen/create#readme",
+  "dependencies": {
+    "mpd-api": "^1.0.3"
+  }
+}

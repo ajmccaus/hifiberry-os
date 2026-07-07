@@ -1,0 +1,34 @@
+/* @override 
+	http://beocreate-core.local/extensions/sound/sound.css */
+	
+body:not(.advanced-sound-adjustments) .advanced-adjustment:not(h2):not(.menu-item) {
+	display: none !important;
+}
+
+h2.advanced-adjustment {
+	transition: opacity 0.5s ease, margin-bottom 0.5s ease;
+}
+
+body:not(.advanced-sound-adjustments) .advanced-adjustment.menu-item {
+	/*display: none !important;*/
+	/*transform: scaleY(0);*/
+	opacity: 0;
+	margin-bottom: -45px;
+	pointer-events: none;
+}
+
+body:not(.advanced-sound-adjustments) h2.advanced-adjustment {
+	/*display: none !important;*/
+	/*transform: scaleY(0);*/
+	opacity: 0;
+	margin-bottom: -35px;
+	pointer-events: none;
+}
+
+body.advanced-sound-adjustments .simple-adjustment {
+	/*display: none !important;*/
+}
+
+#sound .advanced-adjustment.no-animation {
+	transition: none;
+}

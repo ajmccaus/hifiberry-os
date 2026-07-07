@@ -1,0 +1,27 @@
+{
+  "name": "@beocreate/equaliser",
+  "version": "0.8.0",
+  "description": "Parametric equaliser and crossover for Beocreate sound systems.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/bang-olufsen/create"
+  },
+  "keywords": [
+    "equaliser",
+    "crossover",
+    "bang",
+    "olufsen",
+    "beocreate",
+    "audio",
+    "sound"
+  ],
+  "author": "Bang & Olufsen",
+  "license": "MIT",
+  "beocreate": {
+    "requireCardFeatures": ["dsp"]
+  }
+}
