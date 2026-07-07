@@ -1,0 +1,10 @@
+config BR2_PACKAGE_TOUCH_TIMEOUT
+	bool "touch-timeout"
+	help
+	  Backlight dimming and power-off daemon for the official
+	  Raspberry Pi 7" touchscreen. Dims after inactivity, wakes on
+	  touch or SIGUSR1. Auto-detects the backlight and touch input
+	  devices, so it works with both the legacy rpi_backlight and
+	  the KMS-era 10-0045 sysfs names.
+
+	  https://github.com/ajmccaus/touch-timeout
