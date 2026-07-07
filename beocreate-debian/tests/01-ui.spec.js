@@ -76,7 +76,8 @@ test("3. play/pause in the UI reaches the mock ACR as a player command", async (
 
 	const request = await waitFor(async () => {
 		const requests = await env.acrRequests();
-		return requests.find(r => r.method === "POST" && /^\/api\/player\/active\/send\/(playpause|pause|play)$/.test(r.path));
+		// The UI's play/pause button maps to exactly 'playpause'.
+		return requests.find(r => r.method === "POST" && r.path === "/api/player/active/send/playpause");
 	}, "transport command at mock ACR");
 	expect(request).toBeTruthy();
 
