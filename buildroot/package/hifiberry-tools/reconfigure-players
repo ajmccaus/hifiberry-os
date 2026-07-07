@@ -61,14 +61,12 @@ restart_service() {
 }
 
 read_fixed() {
+ # config.fixed sets CARD/MIXER_CONTROL/FEATURES directly (see
+ # doc/hacks.md) - sourcing it is the whole job. Do not copy CURRENT_*
+ # values over it: those come from /etc/hifiberry.state (the previous
+ # detection) and would override the user's fixed configuration.
  if [ -f /etc/hifiberry/config.fixed ]; then
   . /etc/hifiberry/config.fixed
-  for N in MIXER_CONTROL CARD FEATURES; do
-    eval "CUR=\${CURRENT_$N}"
-    if [ "$CUR" != "" ]; then
-      eval "$N=\$CUR"
-    fi
-  done
  fi
 }
 

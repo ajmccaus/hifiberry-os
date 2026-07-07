@@ -1,7 +1,7 @@
 [Unit]
 Description=Temporary AP: hostapd
 Wants=network.target
-After=network.target tempap.service
+After=network.target
 PartOf=tempap.service
 ConditionPathExists=!/boot/noap
 

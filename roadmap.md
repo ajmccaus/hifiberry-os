@@ -21,8 +21,8 @@
 
 ## Fixed in this tree
 
-- Setup-hotspot teardown never worked (`tempap.service` oneshot without `RemainAfterExit`, `PartOf=` pointing at a renamed-away unit): hostapd + dnsmasq (DHCP 10.0.0.10–15, wildcard DNS `address=/#/10.0.0.1`) kept running until reboot once started — a rogue DHCP/DNS server. dnsmasq now also binds wlan0 only and excludes eth0.
-- Touchscreen fixes baked into the image: DSI overlay in config.txt, `video=DSI-1:800x480@60` in both cmdline templates, X11 Compose files installed, cog fullscreen env var renamed. Only `panel_orientation` remains a manual (mounting-specific) step.
+- Setup-hotspot teardown never worked (`tempap.service` oneshot without `RemainAfterExit`, `PartOf=` pointing at a renamed-away unit): hostapd + dnsmasq (DHCP 10.0.0.10–15, wildcard DNS `address=/#/10.0.0.1`) kept running until reboot once started — a rogue DHCP/DNS server. Fixed (after an adversarial review caught an ordering cycle in the first attempt): children are `PartOf=tempap.service`, no `After=` back-edge, and teardown clears the AP address while leaving wlan0 up (an admin-down would strand wpa_supplicant in INTERFACE_DISABLED). dnsmasq also binds wlan0 only and excludes eth0.
+- Touchscreen fixes baked into the image: `display_auto_detect=1` in config.txt (the firmware adds `vc4-kms-dsi-7inch` only when the panel is detected — adding the overlay unconditionally leaves panel-less devices with no `/dev/dri` and a black HDMI screen), `video=DSI-1:800x480@60` in both cmdline templates, X11 Compose files installed, cog fullscreen env var renamed. Only `panel_orientation` remains a manual (mounting-specific) step.
 - Updater: `$F2FS`/`$FS2FS` typo, FSTYPE-aware mount/fsck, cmdline `root=` rewrite that survives `PARTUUID=`, `update` arg-loop `$1`→`$i`, non-numeric server-response guard, `Persistent=true` on updater.timer, `Wants=network-online.target`.
 - Data safety: `/data` is no longer reformatted when fsck exit 1 means "errors corrected"; fstab dedup pattern fixed.
 - `copy-overlays.mk` tested undefined make variables, so base-board dtbs were never shipped for OTA updates (kernel/device-tree mismatch risk); now tests `BR2_PACKAGE_PIVERSION_*` and uses the arm64 dts path on 64-bit builds. `build-config` now maps `02`→`0_2`, `0`→`0w` symbol names.
@@ -41,13 +41,48 @@
 
 ## Known issues, deliberately not changed
 
-- `spotifyd`, `hifiberry-test`, and `ympd-bin` ship 32-bit armhf binaries that cannot run on aarch64 (packages inactive in default builds).
+- `hifiberry-test` ships 32-bit armhf binaries that cannot run on aarch64 (test-image only).
 - `partitions`, `resize-partitions`, `mount-data` hardcode `/dev/mmcblk0` (SD-boot only; no USB/NVMe boot).
-- `hifiberry-gstreamer` vendors pre-compiled `.typelib` blobs instead of generating them at build time.
-- `hifiberry-watchdog` and `alsa-eq` fail to build if enabled (missing files / commented-out dependency).
 - cog.service `WAYLAND_DISPLAY=wayland-1` pairing with weston is unusual but confirmed working on hardware.
 - aarch64 kernel is installed to /boot under the name `zImage` (boots correctly; naming only).
 - vollibrespot and the rest of the player stack are unmaintained upstream; a Spotify API change cannot be fixed on this branch.
+
+## Next steps
+
+### Buildroot (PR #1)
+- [ ] Build an image and flash a spare SD; verify: display comes up via
+  `display_auto_detect=1`, cog fullscreen, touch works, boot logo fits,
+  no rainbow
+- [ ] Verify the hotspot lifecycle on-device: `systemctl start tempap`
+  (AP + DHCP up) → `systemctl stop tempap` (hostapd/dnsmasq stopped,
+  wlan0 up with no 10.0.0.1 address), then WiFi setup end-to-end
+- [ ] With Ethernet connected, confirm no "HiFiBerry Setup" AP after boot
+- [ ] `extract-update --simulate` on a reflashable device
+- [ ] Merge PR #1
+- [ ] Merge the touch-timeout package branch (includes the
+  no-backlight crash-loop guard)
+
+### Beocreate on Debian (PR #2)
+- [ ] Land the adversarial-review remediation: WebSocket-event test
+  coverage, cover-art proxying for remote browsers, no-volume-control
+  crash guard, activation via the ACR-reported player name, brightness
+  floor (no persisted 0), packaging polish
+- [ ] Build the .deb; install on an hbosng SD (Pi 4); browse :8080 from
+  phone and laptop; `kiosk-mode.sh setup --url=http://localhost:8080`
+- [ ] Resolve the documented ACR contract uncertainties on-device:
+  player activation endpoint variant, volume event shape, artwork URL
+  keys, actual player naming (spotify vs librespot)
+- [ ] Merge PR #2 once device-verified
+
+### Later
+- [ ] touch-timeout: merge its upstream security/ppoll branch, bump the
+  package pin; coordinate brightness levels with the screen extension
+- [ ] Port deferred Beocreate extensions as needed: network
+  (nmcli show/change), bluetooth (`/api/btaudio/`), music library;
+  wire love-track to ACR favourites
+- [ ] Prune unused B&O product-image assets (tests green before/after)
+- [ ] If staying on buildroot long-term: port the buildroot patch to
+  ≥ 2024.02 to unlock kernels newer than 6.1
 
 ## Beocreate interface portability (measured, not estimated)
 

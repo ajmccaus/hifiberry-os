@@ -137,7 +137,7 @@ fi
 if [ "$V" -lt 20200416 ]; then
  echo "Version < 20200416, switching to new asound.conf with eq support"
  cp /newroot/etc/asound.conf /newroot/etc/asound.conf.bak
- cp /newroot/etc/asound.conf.eq /newroot/etc/asound.conf
+ [ -f /newroot/etc/asound.conf.eq ] && cp /newroot/etc/asound.conf.eq /newroot/etc/asound.conf
 fi
 
 if [ "$V" -lt 20200420 ]; then
@@ -150,7 +150,7 @@ fi
 
 if [ "$V" -lt 20200530 ]; then
  echo "Version < 20200530, disabling alsaeq"
- cp /newroot/etc/asound.conf.eq /newroot/etc/asound.conf
+ [ -f /newroot/etc/asound.conf.eq ] && cp /newroot/etc/asound.conf.eq /newroot/etc/asound.conf
  FKMS=`cat /boot/config.txt | grep vc4-fkms-v3d`
  if [ "$FKMS" == "" ]; then 
   echo "Adding video driver"
