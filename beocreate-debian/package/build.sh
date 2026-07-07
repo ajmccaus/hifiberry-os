@@ -33,20 +33,38 @@ echo "Building $PACKAGE $VERSION..."
 rm -rf "$STAGING"
 mkdir -p "$STAGING/DEBIAN" \
          "$STAGING/opt/beocreate" \
-         "$STAGING/lib/systemd/system" \
-         "$STAGING/etc/systemd/system/sigmatcpserver.service.d" \
+         "$STAGING/usr/lib/systemd/system" \
+         "$STAGING/usr/lib/systemd/system/sigmatcpserver.service.d" \
          "$STAGING/usr/share/beocreate"
 
 # 1: Server payload -> /opt/beocreate (without node_modules; installed below).
 (cd "$SERVER_DIR" && tar --exclude=node_modules --exclude=package-lock.json -cf - .) | tar -xf - -C "$STAGING/opt/beocreate"
 
-# 2: Production node modules. Prefer a reproducible offline-friendly install.
+# 2: Production node modules. --omit=optional keeps out optional native
+# prebuilds (bufferutil, utf-8-validate, ...): this is an Architecture: all
+# package, so no platform-specific binaries may ship. The websocket module
+# falls back to its pure-JS implementation without them.
 echo "Installing production node modules..."
-(cd "$STAGING/opt/beocreate" && npm install --omit=dev --no-audit --no-fund --loglevel=error)
+(cd "$STAGING/opt/beocreate" && npm install --omit=dev --omit=optional --no-audit --no-fund --loglevel=error)
 
-# 3: systemd unit + sigmatcp TCP re-enable drop-in.
-install -m 644 "$MYDIR/beocreate2.service" "$STAGING/lib/systemd/system/beocreate2.service"
-install -m 644 "$MYDIR/sigmatcp-enable-tcp.conf" "$STAGING/etc/systemd/system/sigmatcpserver.service.d/10-beocreate-enable-tcp.conf"
+# bufferutil and utf-8-validate are *hard* dependencies of the 'websocket'
+# module (so --omit=optional does not exclude them) and ship prebuilt
+# binaries for many platforms. Both fall back to their pure-JS
+# implementations when no binary loads, so prune the prebuilds.
+find "$STAGING/opt/beocreate/node_modules" -type d -name prebuilds -prune -exec rm -rf {} +
+
+# Safety net: fail the build if any compiled binary slipped through anyway.
+if find "$STAGING/opt/beocreate/node_modules" -name '*.node' | grep -q .; then
+    echo "ERROR: platform-specific .node binaries found in an Architecture: all package:" >&2
+    find "$STAGING/opt/beocreate/node_modules" -name '*.node' >&2
+    exit 1
+fi
+
+# 3: systemd unit + sigmatcp TCP re-enable drop-in. Both go to the package-
+# owned /usr/lib/systemd/system tree (not /etc/systemd/system, which belongs
+# to the admin and would raise conffile questions on upgrade/removal).
+install -m 644 "$MYDIR/beocreate2.service" "$STAGING/usr/lib/systemd/system/beocreate2.service"
+install -m 644 "$MYDIR/sigmatcp-enable-tcp.conf" "$STAGING/usr/lib/systemd/system/sigmatcpserver.service.d/10-beocreate-enable-tcp.conf"
 
 # 4: Default configuration. Installed to /usr/share and copied to
 # /etc/beocreate by postinst only if no configuration exists yet, so user
@@ -72,6 +90,10 @@ Description: Beocreate 2 classic user interface for HiFiBerryOS NG
  kiosk (kiosk-mode.sh setup --url=http://localhost:8080).
 EOF
 
+# Maintainer scripts: prefer the Debian systemd helpers when present
+# (deb-systemd-helper tracks enable state across remove/purge,
+# deb-systemd-invoke honours policy-rc.d, e.g. in chroots/images), and fall
+# back to plain systemctl on systems without the debhelper tooling.
 cat > "$STAGING/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
@@ -83,12 +105,27 @@ if [ ! -f /etc/beocreate/system.json ]; then
 fi
 
 if [ "$1" = "configure" ]; then
-    systemctl daemon-reload || true
-    systemctl enable beocreate2.service || true
-    systemctl restart beocreate2.service || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+        deb-systemd-helper unmask beocreate2.service >/dev/null || true
+        deb-systemd-helper enable beocreate2.service >/dev/null || true
+    else
+        # Fallback: no debhelper tooling on this system.
+        systemctl enable beocreate2.service || true
+    fi
+    if command -v deb-systemd-invoke >/dev/null 2>&1; then
+        deb-systemd-invoke restart beocreate2.service >/dev/null || true
+    else
+        # Fallback: no debhelper tooling on this system.
+        systemctl restart beocreate2.service || true
+    fi
     # Apply the sigmatcp TCP re-enable drop-in if the service is present.
     if systemctl list-unit-files sigmatcpserver.service >/dev/null 2>&1; then
-        systemctl try-restart sigmatcpserver.service || true
+        if command -v deb-systemd-invoke >/dev/null 2>&1; then
+            deb-systemd-invoke try-restart sigmatcpserver.service >/dev/null || true
+        else
+            systemctl try-restart sigmatcpserver.service || true
+        fi
     fi
 fi
 
@@ -100,7 +137,12 @@ cat > "$STAGING/DEBIAN/prerm" <<'EOF'
 #!/bin/sh
 set -e
 if [ "$1" = "remove" ]; then
-    systemctl disable --now beocreate2.service || true
+    if command -v deb-systemd-invoke >/dev/null 2>&1; then
+        deb-systemd-invoke stop beocreate2.service >/dev/null || true
+    else
+        # Fallback: no debhelper tooling on this system.
+        systemctl stop beocreate2.service || true
+    fi
 fi
 exit 0
 EOF
@@ -109,9 +151,28 @@ chmod 755 "$STAGING/DEBIAN/prerm"
 cat > "$STAGING/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 set -e
-if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    systemctl daemon-reload || true
-fi
+case "$1" in
+    remove)
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        if command -v deb-systemd-helper >/dev/null 2>&1; then
+            deb-systemd-helper disable beocreate2.service >/dev/null || true
+        else
+            # Fallback: no debhelper tooling on this system.
+            systemctl disable beocreate2.service >/dev/null 2>&1 || true
+        fi
+        ;;
+    purge)
+        # Remove the runtime configuration/settings written by the server
+        # (system.json copied by postinst plus per-extension settings).
+        rm -f /etc/beocreate/*.json
+        rmdir /etc/beocreate 2>/dev/null || true
+        if command -v deb-systemd-helper >/dev/null 2>&1; then
+            deb-systemd-helper purge beocreate2.service >/dev/null || true
+            deb-systemd-helper unmask beocreate2.service >/dev/null || true
+        fi
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        ;;
+esac
 exit 0
 EOF
 chmod 755 "$STAGING/DEBIAN/postrm"
