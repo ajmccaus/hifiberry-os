@@ -28,6 +28,7 @@
 			{"kind": "separator"},
 			{"name": "sound", "kind": "extension"},
 			{"name": "sources", "kind": "extension"},
+			{"name": "screen", "kind": "extension"},
 			{"name": "network", "kind": "extension"},
 			{"name": "general-settings", "kind": "extension"},
 			{"kind": "separator"},
