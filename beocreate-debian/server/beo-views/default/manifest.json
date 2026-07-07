@@ -1,0 +1,49 @@
+{
+	"short_name": "Beocreate",
+	"name": "Beocreate",
+	"description": "Upcyle your old speakers.",
+	"start_url": "/",
+	"background_color": "#222",
+	"display": "standalone",
+	"scope": "/",
+	"theme_color": "#222",
+	"shortcuts": [],
+	"icons": [
+		{
+			"src": "maskable_icon.png",
+			"type": "image/png",
+			"sizes": "300x300",
+			"purpose": "maskable"
+		},
+		{
+			"src": "apple-touch-icon.png?v=1",
+			"type": "image/png",
+			"sizes": "300x300",
+			"purpose": "any"
+		}
+	],
+	"navigationSets": [
+		{"id": "full", "items": [
+			{"name": "product-information", "kind": "extension"},
+			{"kind": "separator"},
+			{"name": "sound", "kind": "extension"},
+			{"name": "sources", "kind": "extension"},
+			{"name": "network", "kind": "extension"},
+			{"name": "general-settings", "kind": "extension"},
+			{"kind": "separator"},
+			{"name": "interact", "kind": "extension"},
+			{"name": "feedback", "kind": "extension"}
+		]},
+		{"id": "focused", "name": "Focused", "description": "Shortcuts focused on daily use", "items": [
+			{"kind": "extension", "name": "music"},
+			{"kind": "extension", "name": "radio"},
+			{"kind": "extension", "name": "sources"},
+			{"kind": "separator"},
+			{"kind": "extension", "name": "beosonic"},
+			{"kind": "extension", "name": "sound"}
+		]}
+	],
+	"extensionMarkupFileName": "menu",
+	"extensionScriptFileName": "€-client",
+	"extensionStylesheetFileName": "€"
+}
