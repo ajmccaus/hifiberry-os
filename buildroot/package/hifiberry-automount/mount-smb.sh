@@ -22,8 +22,10 @@ for m in `cat /etc/smbmounts.conf | grep -v ^#`; do
     mkdir -p $BASEDIR/$MOUNTID
   fi
   # Check if share is on a .local host, resolve this first
+  # Reset IP so a failed lookup can't inherit the previous share's address
+  IP=""
   HOST=`echo $m | awk -F\; '{print $2}' | awk -F\/ '{print $3}'`
-  if [[ $HOST == *.local ]]; then 
+  if [[ $HOST == *.local ]]; then
     IP=`avahi-resolve-host-name -4 $HOST | awk '{print $2}'`
   fi
 

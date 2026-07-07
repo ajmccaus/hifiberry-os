@@ -4,7 +4,7 @@ if [ -f /data/updater.zip ]; then
  UPDATER=/data/updater.zip
  ISTAR=0
  F2FS=`unzip -l $UPDATER | grep rootfs.f2fs`
- if [ "$FS2FS" != "" ]; then
+ if [ "$F2FS" != "" ]; then
   FSTYPE=f2fs
  fi
 
@@ -53,7 +53,11 @@ else
  resize.f2fs $INACTIVE
 fi
 
-mount -t ext4 $INACTIVE /newroot
+if [ "$FSTYPE" == "f2fs" ]; then
+ mount -t f2fs $INACTIVE /newroot
+else
+ mount -t ext4 $INACTIVE /newroot
+fi
 if [ -f /newroot/resize-me ]; then
   rm /newroot/resize-me
 fi
@@ -153,7 +157,11 @@ sync
 
 echo "unmounting $INACTIVE..."
 umount $INACTIVE
-fsck.ext2 -p -f -v $INACTIVE
+if [ "$FSTYPE" == "f2fs" ]; then
+ fsck.f2fs -f $INACTIVE
+else
+ fsck.ext2 -p -f -v $INACTIVE
+fi
 RES=$?
 if [ "$RES" != "0" ] && [ "$RES" != "1" ]; then
  echo "could file system is corrupted, not switching to new version..."
@@ -167,8 +175,8 @@ fi
 
 echo "switching root file system to inactive partition..."
 echo "was:     " `cat /boot/cmdline.txt`
-QUOTED_INACTIVE=$(sed 's/[\/&]/\\&/g; s/$/\\/' <<< "$INACTIVE")
-CMDLINE=`cat /boot/cmdline.txt | sed "s/root\=[a-zA-Z0-9\/]*/root=$QUOTED_INACTIVE /"`
+QUOTED_INACTIVE=$(sed 's/[\/&]/\\&/g' <<< "$INACTIVE")
+CMDLINE=`cat /boot/cmdline.txt | sed "s/root=[^ ]*/root=$QUOTED_INACTIVE/"`
 echo "becomes: " $CMDLINE
 echo "$CMDLINE" > /boot/cmdline.txt
 

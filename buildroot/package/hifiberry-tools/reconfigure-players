@@ -61,11 +61,12 @@ restart_service() {
 }
 
 read_fixed() {
+ # config.fixed sets CARD/MIXER_CONTROL/FEATURES directly (see
+ # doc/hacks.md) - sourcing it is the whole job. Do not copy CURRENT_*
+ # values over it: those come from /etc/hifiberry.state (the previous
+ # detection) and would override the user's fixed configuration.
  if [ -f /etc/hifiberry/config.fixed ]; then
   . /etc/hifiberry/config.fixed
-  for N in MIXER_CONTROL CARD FEATURES; do
-    $N=${CURRENT_$N}
-  done
  fi
 }
 
@@ -188,7 +189,7 @@ guess_volume_control() {
 	
  if [ -f /etc/hifiberry/mixer ]; then
    MIXER_CONTROL=`cat /etc/hifiberry/mixer`
-   if [ "MIXER_CONTROL" != "" ]; then
+   if [ "$MIXER_CONTROL" != "" ]; then
      return
    fi
  fi
@@ -196,7 +197,7 @@ guess_volume_control() {
  # If a DSP module was detected, check for DSP volume
  # control first
  if [[ $CARD == *"DSP"* ]]; then
-   dsptoolkit --timeout=20 get-volume 2 >/dev/null >/dev/null
+   dsptoolkit --timeout=20 get-volume >/dev/null 2>/dev/null
    if [ $? == 0 ]; then
      MIXER_CONTROL=DSPVolume
      return
@@ -233,7 +234,7 @@ guess_volume_control() {
  fi
 
  # Check if there is a working DSP volume control
- dsptoolkit --timeout=20 get-volume 2 >/dev/null >/dev/null
+ dsptoolkit --timeout=20 get-volume >/dev/null 2>/dev/null
  if [ $? == 0 ]; then
     MIXER_CONTROL=DSPVolume
     return

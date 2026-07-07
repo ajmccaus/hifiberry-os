@@ -7,6 +7,9 @@ ConditionPathExists=!/boot/noap
 
 [Service]
 Type=oneshot
+# Stay "active" after /bin/true exits so `systemctl stop tempap` is not a
+# no-op and stop propagates to the PartOf= sub-services (hostapd, dnsmasq).
+RemainAfterExit=yes
 # Execute a dummy program
 ExecStart=/bin/true
 

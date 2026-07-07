@@ -2,6 +2,17 @@
 
 Complete step-by-step guide to properly configure the official Raspberry Pi 7" touchscreen with HifiBerryOS 64 on RPi4.
 
+> **Note:** Images built from this repository now have Steps 1, 1a, 3 and 4
+> baked in (`display_auto_detect=1` — the firmware adds the DSI overlay
+> only when the panel is detected, keeping HDMI-only devices working —
+> plus `disable_splash=1` in config.txt, X11 Compose files, and the
+> `COG_PLATFORM_WL_VIEW_FULLSCREEN` cog setting), and cmdline.txt already
+> contains `video=DSI-1:800x480@60`.
+> The boot logo is also sized to fit the 800x480 panel (it was 926 px wide
+> and got cut off). Only the `panel_orientation=upside_down` part of Step 2
+> still needs to be added manually if your screen is mounted upside down.
+> All steps below remain necessary on stock HiFiBerryOS64 images.
+
 ## Step 1: Add dtoverlay to config.txt
 
 Add the dtoverlay to the config.txt in the `[all]` section:
