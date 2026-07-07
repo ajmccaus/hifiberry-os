@@ -27,6 +27,15 @@
 - Service fixes: mpd/usbmount ordering vs `mount-data.service`, extensions vs docker, raat referenced a nonexistent `.target`, duplicate `StandardOutput=` in reboot.service, `Descriptihortn` typo in psplash-start.service, stale Spotify AP IP pin removed from vollibrespot.service.
 - Headless WiFi provisioning restored: `copy-config.service` is now installed and enabled (`Type=oneshort` typo fixed; copies instead of moving from the read-only /boot).
 
+## Removed (dead code cut)
+
+- Orphaned packages (in no build: not selected by `hifiberry-all`, the localbrowser, or any other package): spotifyd (7 32-bit blobs), librespot, all 11 mopidy packages, alsa-eq (depended on nonexistent caps), hifiberry-watchdog (broken .mk), hifiberry-gmrender + hifiberry-gstreamer (vendored typelib blobs), mpd-mpris, hifiberry-postgres, hifiberry-analytics.
+- 18 python packages whose only consumers were the packages above (verified against both Kconfig `select` and make-level `_DEPENDENCIES`); python-zopeevent kept (python-gevent selects it), python-usagedata kept (hifiberry-tools selects it).
+- Stale saved configs (config0w/2/3/4, hifiberryos-gui, hifiberryos-nogui, testimage, devpackages, remove-slowpi) — the build flow uses upstream defconfigs + override.conf/override-test.conf only.
+- Buildroot patches for 2019–2021 releases and buildroot-dev.patch; only 2023.02.3 is buildable.
+- Dead code in kept packages: stale vendored audiocontrol2/src (never installed), ympd-bin blob (install commented out), `HIFIBERRY_UPDATER_INSTALL_ALL_OVERLAYS` (never hooked, contained a stray `sleep 10`), SysV S30copy-wifi-config (superseded by copy-config.service), /etc/network/interfaces.bak install, black-1x1.png.
+- The kernel pin was moved to the current rpi-6.1.y head (previous pin kept commented). Kernels newer than 6.1 require buildroot ≥ 2024.02 (linux-headers options) — that is the "port the buildroot patch" milestone below.
+
 ## Known issues, deliberately not changed
 
 - `spotifyd`, `hifiberry-test`, and `ympd-bin` ship 32-bit armhf binaries that cannot run on aarch64 (packages inactive in default builds).

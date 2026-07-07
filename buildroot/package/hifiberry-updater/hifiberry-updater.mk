@@ -77,15 +77,6 @@ define HIFIBERRY_UPDATER_INSTALL_FIRMWARE
 endef
 endif
 
-define HIFIBERRY_UPDATER_INSTALL_ALL_OVERLAYS
-        echo "Installing overlays"
-	sleep 10
-	mkdir -p $(TARGET_DIR)/usr/lib/firmware/rpi/overlays
-        for ovldtb in $(@D)/boot/overlays/*.dtbo; do \
-                $(INSTALL) -D -m 0644 $${ovldtb} $(TARGET_DIR)/usr/lib/firmware/rpi/overlays/$${ovldtb##*/} || exit 1; \
-        done
-endef
-
 HIFIBERRY_UPDATER_INSTALL_TARGET_CMDS += $(HIFIBERRY_UPDATER_INSTALL_FIRMWARE)
 HIFIBERRY_UPDATER_INSTALL_TARGET_CMDS += $(HIFIBERRY_UPDATER_INSTALL_KERNEL)
 

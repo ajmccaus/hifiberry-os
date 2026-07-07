@@ -8,8 +8,6 @@ define RASPI_WIFI_BUILD_CMDS
 endef
 
 define RASPI_WIFI_INSTALL_TARGET_CMDS
-	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/interfaces \
-		$(TARGET_DIR)/etc/network/interfaces.bak
 	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/hostapd.conf \
 		$(TARGET_DIR)/etc/tempap-hostapd.conf
 	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/dnsmasq.conf \
@@ -23,11 +21,6 @@ define RASPI_WIFI_INSTALL_TARGET_CMDS
 	# that the user dropped on the FAT partition
 	$(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/copy-config \
 		$(TARGET_DIR)/opt/hifiberry/bin/copy-config
-endef
-
-define RASPI_WIFI_INSTALL_INIT_SYSV
-    $(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/S30copy-wifi-config \
-           $(TARGET_DIR)/etc/init.d/
 endef
 
 define RASPI_WIFI_INSTALL_INIT_SYSTEMD
