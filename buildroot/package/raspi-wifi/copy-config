@@ -1,10 +1,21 @@
 #!/bin/bash
 
+# /boot is normally mounted read-only, so copy (not move) and remove the
+# source only after remounting rw; leaving the file on /boot is harmless
+# as it is copied again on the next boot.
 printf "Looking for configuration files on /boot: "
 if [ -f "/boot/wpa_supplicant.conf" ]; then
-    mv /boot/wpa_supplicant.conf /etc/wpa_supplicant.conf
+    cp /boot/wpa_supplicant.conf /etc/wpa_supplicant.conf
+    if mount -o remount,rw /boot 2>/dev/null; then
+        rm -f /boot/wpa_supplicant.conf
+        mount -o remount,ro /boot 2>/dev/null
+    fi
 fi
 
-if [ -f "/boot/systemname" ]; then 
-    mv /boot/systemname /etc/systemname
+if [ -f "/boot/systemname" ]; then
+    cp /boot/systemname /etc/systemname
+    if mount -o remount,rw /boot 2>/dev/null; then
+        rm -f /boot/systemname
+        mount -o remount,ro /boot 2>/dev/null
+    fi
 fi

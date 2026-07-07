@@ -7,20 +7,31 @@
 
 COPY_OVERLAYS_DEPENDENCIES = rpi-firmware linux
 
-ifdef HIFIBERRY_PIVERSION_0w
+ifeq ($(BR2_PACKAGE_PIVERSION_0w),y)
 PIOVERLAYS = bcm2708-rpi-zero-w.dtb
 endif
 
-ifdef HIFIBERRY_PIVERSION_2
+ifeq ($(BR2_PACKAGE_PIVERSION_0_2),y)
+PIOVERLAYS = bcm2710-rpi-zero-2-w.dtb
+endif
+
+ifeq ($(BR2_PACKAGE_PIVERSION_2),y)
 PIOVERLAYS = bcm2709-rpi-2-b.dtb
 endif
 
-ifdef HIFIBERRY_PIVERSION_3
+ifeq ($(BR2_PACKAGE_PIVERSION_3),y)
 PIOVERLAYS = bcm2710-rpi-3-b-plus.dtb bcm2710-rpi-3-b.dtb bcm2710-rpi-cm3.dtb
 endif
 
-ifdef HIFIBERRY_PIVERSION_4
+ifeq ($(BR2_PACKAGE_PIVERSION_4),y)
 PIOVERLAYS = bcm2711-rpi-4-b.dtb
+endif
+
+# Base dtbs live in different directories on 32-bit and 64-bit kernels
+ifeq ($(BR2_aarch64),y)
+PIDTSDIR = arch/arm64/boot/dts/broadcom
+else
+PIDTSDIR = arch/arm/boot/dts
 endif
 
 define COPY_OVERLAYS_INSTALL_TARGET_CMDS
@@ -30,7 +41,7 @@ define COPY_OVERLAYS_INSTALL_TARGET_CMDS
 	  	cp -v $(BUILD_DIR)/linux-custom/arch/arm/boot/dts/overlays/$$i*.dtbo $(BINARIES_DIR)/rpi-firmware/overlays; \
                 cp -v $(BUILD_DIR)/linux-custom/arch/arm/boot/dts/overlays/$$i*.dtbo $(TARGET_DIR)/usr/lib/firmware/rpi/overlays; \
         done
-        cd $(BUILD_DIR)/linux-custom/arch/arm/boot/dts/; for i in $(PIOVERLAYS) ; do \
+        cd $(BUILD_DIR)/linux-custom/$(PIDTSDIR); for i in $(PIOVERLAYS) ; do \
                 cp -v $$i $(BINARIES_DIR); \
 		cp -v $$i $(TARGET_DIR)/usr/lib/firmware/rpi; \
 	done
