@@ -45,7 +45,8 @@ var systemVersion = require("./package.json").version;
 var defaultSystemConfiguration = {
 	"cardType": "Beocreate 4-Channel Amplifier",
 	"cardFeatures": [],
-	"port": 80,
+	"port": 80, // Public port the UI is reached on (advertised by bonjour, used in art URLs); on hbosng nginx owns it.
+	"listenPort": 8081, // hbosng port: the server itself listens here, on loopback only, behind the nginx auth gateway.
 	"httpsPort": 443,
 	"language": "en",
 	"defaultAppearance": "default",
@@ -370,9 +371,9 @@ if (useHTTPS) {
 		}
 	});
 
-	beoServerHTTPS.listen(systemConfiguration.httpsPort); // Listen on the HTTPS port.
+	beoServerHTTPS.listen(systemConfiguration.httpsPort, "127.0.0.1"); // Listen on the HTTPS port (hbosng port: loopback only).
 }
-beoServer.listen(systemConfiguration.port); // Listen on the HTTP port.
+beoServer.listen(systemConfiguration.listenPort, "127.0.0.1"); // Listen on the HTTP port (hbosng port: loopback only; nginx serves the public port).
 
 
 etags = (developerMode) ? false : true; // Disable etags (caching) when running with debug.
@@ -407,49 +408,6 @@ expressServer.get("/view/:appearance", function (req, res) {
 		res.sendFile(systemDirectory+"/common/appearance-not-found.html");
 	}
 });
-// REST API endpoint to talk to extensions.
-expressServer.use(express.json());
-expressServer.post("/:extension/:header/:extra*?", function (req, res) {
-	if (req.params.header == "upload") {
-		if (debugMode) console.log("File upload for '"+req.params.extension+"':", req.header("fileName"));
-		if (extensions[req.params.extension] && extensions[req.params.extension].processUpload) { // Check that the extension can receive this file, then save it to the upload directory and call the extension to process it.
-			if (req.header("customData")) {
-				customData = JSON.parse(req.header("customData"));
-			} else {
-				customData = null;
-			}
-			if (!fs.existsSync(dataDirectory+"/beo-uploads")) fs.mkdirSync(dataDirectory+"/beo-uploads");
-			if (!fs.existsSync(dataDirectory+"/beo-uploads/"+req.params.extension)) fs.mkdirSync(dataDirectory+"/beo-uploads/"+req.params.extension);
-			var fileName = req.header("fileName").replace("/", "-").replace("..", "-");
-			var filePath = dataDirectory+"/beo-uploads/"+req.params.extension+"/"+fileName;
-			
-			var fileStream = fs.createWriteStream(filePath);
-			fileStream.on("finish", function() {
-				try {
-					extensions[req.params.extension].processUpload(filePath, customData);
-				} catch (error) {
-					console.error("Error processing file upload:", error);
-				}
-			});
-			req.pipe(fileStream);
-			req.on("end", function() {
-				res.status(202);
-				res.send("OK");
-				
-			});
-		} else {
-			console.error("'"+req.params.extension+"' does not support uploading files.");
-			res.status(501);
-			res.send("cannotReceive");
-		}
-	} else {
-		if (debugMode >= 3) console.log("API request received at /"+req.params.extension+"/"+req.params.header+":", req.body, req.params.extra);
-		beoBus.emit(req.params.extension, {header: req.params.header, content: {body: req.body, extra: req.params.extra}});
-		res.status(200);
-		res.send("OK");
-	}
-});
-
 // Serve downloads:
 var downloadRoutes = {};
 expressServer.get("/:extension/download/:urlPath", function (req, res) {

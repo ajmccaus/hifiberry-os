@@ -97,6 +97,12 @@ Extension `screen` in `server/beo-extensions/screen/`:
     unavailable.
 12. Brightness floor: the UI can neither apply nor persist less than
     5 % brightness; a persisted lower value is clamped up at startup.
+13. WebSocket Origin check: a handshake with Origin `http://evil.example`
+    or `null` is refused (403); a same-origin one (raw and from Chromium)
+    and one without Origin are accepted.
+14. No REST POST route: `POST /general-settings/restartProduct` is 404.
+15. Loopback only: a TCP connect to the machine's first non-internal
+    IPv4 address on the server port is refused (skipped if there is none).
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -104,7 +110,7 @@ matching the mock's image.
 
 ## Status
 
-All twelve Playwright criteria above pass (see "Running the tests").
+All fifteen Playwright criteria above pass (see "Running the tests").
 
 ## Patches applied to the vendored server
 
@@ -114,7 +120,10 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
 
 - `beo-system/beo-server.js` — data directory `/etc/beocreate` is now
   `process.env.BEO_CONFIG_DIR || "/etc/beocreate"` so tests can point the
-  server at a temp dir. No other changes.
+  server at a temp dir. The HTTP server listens on `listenPort` (new
+  key, default 8081) and the HTTPS server on `httpsPort`, both on
+  127.0.0.1 only. The REST endpoint `POST /:extension/:header/:extra*?`
+  and its `express.json()` body parser are deleted (ADR 0001).
 - `beocreate_essentials/acr.js` — **new** shared module wrapping the
   documented ACR REST API and the `/api/events` WebSocket stream (single
   subscription, reconnect with backoff, events re-emitted on a local
@@ -181,7 +190,11 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   `127.0.0.1` (sigmatcpserver runs with `--localhost` on hbosng),
   overridable with `BEO_DSP_ADDRESS`.
 - `beocreate_essentials/communication.js` — `startBonjour` wrapped in
-  try/catch so unavailable mDNS (containers) can't crash the server.
+  try/catch so unavailable mDNS (containers) can't crash the server. The
+  WebSocket refuses (403) a handshake whose `Origin` is present but does
+  not parse as a URL (e.g. `null`) or whose host differs from the `Host`
+  header (case-insensitive); a handshake without `Origin` (non-browser
+  client) is accepted (ADR 0001).
 - `beo-views/default/manifest.json` — added `screen` to the `full`
   navigation set.
 - `server/package.json` — **new**; declares the runtime dependencies
@@ -238,12 +251,14 @@ beocreate-debian/run-tests.sh
 Installs npm dependencies for `server/`, `mock-backend/` and `tests/`,
 then runs Playwright (Chromium; honours `PLAYWRIGHT_BROWSERS_PATH`, falls
 back to the newest `chromium-*` build found there). Each spec file starts
-its own mock ACR (:1080), mock backlight directory and beo-server (:8080)
-and tears them down; port 8080/1080 must be free. The five spec files
-cover the twelve criteria: `01-ui` (1-5), `02-screen` (6, 12),
-`03-events` (7-9, pushed WebSocket events), `04-player-naming` (10,
-mock started with `MOCK_ACR_SPOTIFY_NAME=librespot`) and
-`05-no-volume` (11, mock started with `MOCK_ACR_VOLUME_AVAILABLE=0`). Screenshots of the
+its own mock ACR (:1080), mock backlight directory and beo-server and
+tears them down; port 8080/1080 must be free. There is no nginx in the
+suite: the server listens directly on :8080 (`listenPort` = `port`).
+The six spec files cover the fifteen criteria: `01-ui` (1-5),
+`02-screen` (6, 12), `03-events` (7-9, pushed WebSocket events),
+`04-player-naming` (10, mock started with
+`MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
+with `MOCK_ACR_VOLUME_AVAILABLE=0`) and `06-exposure` (13-15). Screenshots of the
 now-playing screen and the screen-brightness panel are written to
 `tests/screenshots/`.
 

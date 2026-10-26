@@ -82,11 +82,13 @@ class BeoEnv {
 		this.backlightDir = path.join(this.workDir, "backlight");
 		fs.mkdirSync(this.configDir, {recursive: true});
 
-		// System configuration for the Beocreate server under test.
+		// System configuration for the Beocreate server under test. The tests
+		// talk to the server directly (no nginx), so it listens on the public port.
 		fs.writeFileSync(path.join(this.configDir, "system.json"), JSON.stringify({
 			cardType: "Beocreate 4-Channel Amplifier",
 			cardFeatures: ["dsp", "arm7"],
 			port: SERVER_PORT,
+			listenPort: SERVER_PORT,
 			acrAddress: this.acrURL
 		}, null, "\t"));
 

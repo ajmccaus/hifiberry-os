@@ -91,8 +91,15 @@ BeoCom.prototype.startSocket = function(options, callback) {
 	}
 	
 	socket.on('request', function(request) {
-		
-		
+
+		// hbosng port: refuse cross-site pages. A browser always sends Origin; it must name
+		// the host the client asked for (nginx passes Host through as $http_host).
+		// Non-browser clients send no Origin and are allowed.
+		if (request.origin && !sameOrigin(request.origin, request.host)) {
+			request.reject(403);
+			return;
+		}
+
 		if (request.requestedProtocols) {
 			if (acceptedProtocols.indexOf(request.requestedProtocols[0]) != -1) {
 				protocol = request.requestedProtocols[0];
@@ -149,6 +156,15 @@ BeoCom.prototype.startSocket = function(options, callback) {
 	
 	
 	if (callback) callback(true);
+}
+
+function sameOrigin(origin, host) {
+	// An unparsable Origin (e.g. "null" from a sandboxed page) is never same-origin.
+	try {
+		return new URL(origin).host.toLowerCase() == host.toLowerCase();
+	} catch (error) {
+		return false;
+	}
 }
 
 var bonjourRestartTimeout = null;
