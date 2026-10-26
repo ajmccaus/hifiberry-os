@@ -14,6 +14,9 @@
 # (the public :8080 is an nginx site gated by the auth gateway, ADR 0001; the
 # Node server listens on loopback :8081 only), and the hbosng stack
 # (hifiberry-audiocontrol for ACR on :1080, hifiberry-dsp for sigmatcpserver).
+# Recommends touch-timeout (built by ../touch-timeout/build.sh, arch-specific):
+# when installed it owns the backlight and this package's drop-in hands it the
+# slider level from /etc/beocreate/touch-timeout.env (ADR 0002).
 
 set -e
 
@@ -37,6 +40,7 @@ mkdir -p "$STAGING/DEBIAN" \
          "$STAGING/opt/beocreate" \
          "$STAGING/usr/lib/systemd/system" \
          "$STAGING/usr/lib/systemd/system/sigmatcpserver.service.d" \
+         "$STAGING/usr/lib/systemd/system/touch-timeout.service.d" \
          "$STAGING/usr/share/beocreate" \
          "$STAGING/etc/nginx/sites-available" \
          "$STAGING/etc/nginx/sites-enabled" \
@@ -65,11 +69,13 @@ if find "$STAGING/opt/beocreate/node_modules" -name '*.node' | grep -q .; then
     exit 1
 fi
 
-# 3: systemd unit + sigmatcp TCP re-enable drop-in. Both go to the package-
-# owned /usr/lib/systemd/system tree (not /etc/systemd/system, which belongs
-# to the admin and would raise conffile questions on upgrade/removal).
+# 3: systemd unit, sigmatcp TCP re-enable drop-in and touch-timeout
+# brightness drop-in. All go to the package-owned /usr/lib/systemd/system tree
+# (not /etc/systemd/system, which belongs to the admin and would raise
+# conffile questions on upgrade/removal). A drop-in for an absent unit is inert.
 install -m 644 "$MYDIR/beocreate2.service" "$STAGING/usr/lib/systemd/system/beocreate2.service"
 install -m 644 "$MYDIR/sigmatcp-enable-tcp.conf" "$STAGING/usr/lib/systemd/system/sigmatcpserver.service.d/10-beocreate-enable-tcp.conf"
+install -m 644 "$MYDIR/touch-timeout-brightness.conf" "$STAGING/usr/lib/systemd/system/touch-timeout.service.d/20-beocreate-brightness.conf"
 
 # 4: Default configuration. Installed to /usr/share and copied to
 # /etc/beocreate by postinst only if no configuration exists yet, so user
@@ -97,7 +103,7 @@ Section: sound
 Priority: optional
 Architecture: $ARCH
 Depends: nodejs (>= 20), nginx, hifiberry-auth
-Recommends: hifiberry-audiocontrol, hifiberry-dsp
+Recommends: hifiberry-audiocontrol, hifiberry-dsp, touch-timeout
 Installed-Size: $INSTALLED_SIZE
 Maintainer: HiFiBerry <support@hifiberry.com>
 Description: Beocreate 2 classic user interface for HiFiBerryOS NG
@@ -159,6 +165,14 @@ if [ "$1" = "configure" ]; then
             systemctl try-restart sigmatcpserver.service || true
         fi
     fi
+    # Apply the touch-timeout brightness drop-in if the daemon is installed.
+    if systemctl list-unit-files touch-timeout.service >/dev/null 2>&1; then
+        if command -v deb-systemd-invoke >/dev/null 2>&1; then
+            deb-systemd-invoke try-restart touch-timeout.service >/dev/null || true
+        else
+            systemctl try-restart touch-timeout.service || true
+        fi
+    fi
     # After the restart above: an upgraded server only now frees :8080 for nginx.
     reload_nginx
 fi
@@ -198,8 +212,9 @@ case "$1" in
         ;;
     purge)
         # Remove the runtime configuration/settings written by the server
-        # (system.json copied by postinst plus per-extension settings).
-        rm -f /etc/beocreate/*.json
+        # (system.json copied by postinst, per-extension settings and the
+        # touch-timeout arguments of the screen extension).
+        rm -f /etc/beocreate/*.json /etc/beocreate/touch-timeout.env
         rmdir /etc/beocreate 2>/dev/null || true
         if command -v deb-systemd-helper >/dev/null 2>&1; then
             deb-systemd-helper purge beocreate2.service >/dev/null || true

@@ -10,9 +10,10 @@ TCP 8086 re-enabled via systemd override). The kiosk shows it with
 
 - `server/` — the Beocreate Node server (vendored lean from
   hifiberry/create@b86115b, MIT). Port target: Node >= 20.
-- `mock-backend/` — mock ACR + mock backlight sysfs for development and
-  CI testing in a container. Mocks implement the documented ACR API
-  (see references below), so tests exercise the documented contract —
+- `mock-backend/` — mock ACR, mock backlight sysfs and mock `systemctl`
+  for development and CI testing in a container. Mocks implement the
+  documented ACR API (see references below), so tests exercise the
+  documented contract —
   but parts of that contract are underdocumented and had to be
   invented for the mock (see "Contract notes / on-device verification
   items"); those parts are only as good as the assumptions listed
@@ -23,6 +24,10 @@ TCP 8086 re-enabled via systemd override). The kiosk shows it with
   unit, sigmatcp TCP re-enable override, nginx site and auth-gateway
   manifest, following the conventions of the hbosng `packages/` tree
   (available in this repo as branch `hbosng`).
+- `touch-timeout/` — Debian packaging (`touch-timeout` .deb,
+  `Architecture: any`, sbuild like the hbosng C packages) of
+  github.com/ajmccaus/touch-timeout at the buildroot package's pin; the
+  backlight dimming daemon (ADR 0002).
 
 ## Backend mapping (from the portability assessment)
 
@@ -48,27 +53,44 @@ which proxies to the server on loopback `listenPort` (default 8081). Both
 server listeners (HTTP and the optional HTTPS) bind 127.0.0.1 only.
 Backend URLs configurable via `system.json` keys `acrAddress`
 (default `http://127.0.0.1:1080`) and env overrides for testing.
-`BEO_BACKLIGHT_DIR` overrides `/sys/class/backlight` for the screen
-extension (points at the mock sysfs in tests).
+`BEO_BACKLIGHT_DIR` overrides `/sys/class/backlight` and `BEO_SYSTEMCTL`
+the `systemctl` binary for the screen extension (the tests point them at
+the mock sysfs and `mock-backend/mock-systemctl.js`).
 
 ## New: screen extension (brightness)
 
-Extension `screen` in `server/beo-extensions/screen/`:
+Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
 - Menu panel in the Beocreate UI (same look as sound settings) with a
   brightness slider.
-- Backend scans the backlight directory (first entry, same auto-detect
-  approach as touch-timeout), scales percent to `max_brightness`, and
-  writes `brightness`.
-- Persists the chosen level in `/etc/beocreate/screen.json` and
-  restores it on startup.
-- Enforces a minimum of 5 % for values applied/persisted through the
-  UI/settings path (a persisted 0 would leave the kiosk permanently
-  dark with no on-device recovery); a persisted value below the floor
-  is clamped up at startup. Direct API callers
-  (`beo.extensions.screen.setBrightness`) can still apply lower values
-  temporarily, but nothing below the floor is ever persisted. Turning
-  the display off deliberately belongs to the touch-timeout feature
-  (deferred; needs coordination with that package).
+- Backend detects the first backlight device (same auto-detect approach
+  as touch-timeout) for its `max_brightness` and maps percent to raw as
+  `max(15, min(255, round(pct * max_brightness / 100)))`: 15-255 is
+  touch-timeout's `-b` range (outside it the pinned daemon silently runs
+  its default 150). The persisted floor is `ceil(1500 / max_brightness)` %
+  (6 % at 255), so a persisted 0 can never leave the kiosk dark; a
+  persisted value below it is clamped up at startup.
+- The level persists in `/etc/beocreate/screen.json`, written once per
+  drag when the slider has settled (500 ms without a message; slide and
+  release send the same message). The UI always shows this level, never
+  sysfs (which holds the dim level while the screen is dimmed).
+- Mode, queried once per drag (and at startup / on wake) with
+  `systemctl show -p LoadState --value touch-timeout.service`:
+  - **daemon mode** (`loaded`): touch-timeout is the only backlight
+    writer; the extension never writes sysfs and there is no live
+    preview. On settle it atomically writes `BEO_SCREEN_ARGS=-b <raw>` to
+    `/etc/beocreate/touch-timeout.env` and restarts
+    `touch-timeout.service`, whose drop-in
+    (`package/touch-timeout-brightness.conf`) runs
+    `/usr/bin/touch-timeout $BEO_SCREEN_ARGS` (unbraced: no file, no
+    arguments, the daemon's defaults). At startup the env file is
+    rewritten from `screen.json`, restarting the daemon only if it
+    changed. Playback starting from standby (bus `sourcesChanged` with
+    `fromStandby` and a `currentSource`) wakes the screen with
+    `systemctl kill --signal=SIGUSR1 touch-timeout.service`.
+  - **direct mode** (anything else, or `systemctl` fails): every slider
+    message writes `brightness` in sysfs; startup restores the level.
+- touch-timeout installed while the server runs keeps its default `-b`
+  until the next settled drag or server restart writes the env file.
 
 ## Test criteria (Playwright, all must pass)
 
@@ -82,8 +104,9 @@ Extension `screen` in `server/beo-extensions/screen/`:
 5. Volume: changing volume in the UI updates the mock ACR volume.
    The play/pause transport command is asserted to be exactly
    `playpause`.
-6. Screen: brightness slider writes the expected scaled value to the
-   mock backlight file; value persists across a server restart.
+6. Screen (direct mode): brightness slider writes the expected scaled
+   value to the mock backlight file; value persists across a server
+   restart.
 7. Events (push): a `song_changed` event pushed over the mock's
    WebSocket updates the now-playing title/artist in the DOM.
 8. Events (push): a pushed volume change moves the client's volume
@@ -99,14 +122,25 @@ Extension `screen` in `server/beo-extensions/screen/`:
     `/api/volume/info -> available:false`, volume changes from the UI
     don't crash the server, and the UI is told `volumeControl` is
     unavailable.
-12. Brightness floor: the UI can neither apply nor persist less than
-    5 % brightness; a persisted lower value is clamped up at startup.
+12. Brightness floor: the UI can neither apply less than raw 15 nor
+    persist less than 6 %; a persisted lower value is clamped up at
+    startup.
 13. WebSocket Origin check: a handshake with Origin `http://evil.example`
     or `null` is refused (403); a same-origin one (raw and from Chromium)
     and one without Origin are accepted.
 14. No REST POST route: `POST /general-settings/restartProduct` is 404.
 15. Loopback only: a TCP connect to the machine's first non-internal
     IPv4 address on the server port is refused (skipped if there is none).
+16. touch-timeout daemon mode (mock `systemctl` reports it `loaded`): the
+    slider never writes the backlight file; each settled drag writes the
+    mapped `-b` to `touch-timeout.env` and restarts the daemon exactly
+    once; a drag to 0 gives `-b 15`; with a dim value in the backlight
+    file the slider still shows the saved level; at startup a deleted env
+    file is rewritten with one restart, an unchanged one causes none.
+17. Wake on play (daemon mode): a pushed state change from nothing
+    playing to playing logs exactly one
+    `systemctl kill --signal=SIGUSR1 touch-timeout.service`; a second
+    push while already playing logs none.
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -114,7 +148,7 @@ matching the mock's image.
 
 ## Status
 
-All fifteen Playwright criteria above pass (see "Running the tests").
+All seventeen Playwright criteria above pass (see "Running the tests").
 
 ## Patches applied to the vendored server
 
@@ -255,26 +289,34 @@ beocreate-debian/run-tests.sh
 Installs npm dependencies for `server/`, `mock-backend/` and `tests/`,
 then runs Playwright (Chromium; honours `PLAYWRIGHT_BROWSERS_PATH`, falls
 back to the newest `chromium-*` build found there). Each spec file starts
-its own mock ACR (:1080), mock backlight directory and beo-server and
-tears them down; port 8080/1080 must be free. There is no nginx in the
-suite: the server listens directly on :8080 (`listenPort` = `port`).
-The six spec files cover the fifteen criteria: `01-ui` (1-5),
+its own mock ACR (:1080), mock backlight directory and beo-server (its
+`systemctl` is the logging mock) and tears them down; port 8080/1080 must
+be free. There is no nginx in the suite: the server listens directly on
+:8080 (`listenPort` = `port`).
+The seven spec files cover the seventeen criteria: `01-ui` (1-5),
 `02-screen` (6, 12), `03-events` (7-9, pushed WebSocket events),
 `04-player-naming` (10, mock started with
 `MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
-with `MOCK_ACR_VOLUME_AVAILABLE=0`) and `06-exposure` (13-15). Screenshots of the
-now-playing screen and the screen-brightness panel are written to
-`tests/screenshots/`.
+with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15) and
+`07-touch-timeout` (16-17, mock `systemctl` reporting touch-timeout
+`loaded`). Screenshots of the now-playing screen and the
+screen-brightness panel are written to `tests/screenshots/`.
 
 ## Installing on an hbosng device
 
 1. Build the package (needs `node`, `npm`, `dpkg-deb`; architecture-
    independent):
-   `beocreate-debian/package/build.sh` → `beocreate-classic-ui_<v>_all.deb`
-2. `apt install ./beocreate-classic-ui_<v>_all.deb` (or `dpkg -i` +
-   `apt -f install`). Requires `nodejs >= 20`, `nginx` and
-   `hifiberry-auth`; recommends `hifiberry-audiocontrol` and
-   `hifiberry-dsp`. The package ships, as conffiles, the nginx site
+   `beocreate-debian/package/build.sh` → `beocreate-classic-ui_<v>_all.deb`.
+   For screen dimming also build touch-timeout (needs sbuild, like the
+   hbosng C packages; `DIST` picks the chroot):
+   `beocreate-debian/touch-timeout/build.sh` → `touch-timeout_<v>_<arch>.deb`.
+2. `apt install ./beocreate-classic-ui_<v>_all.deb ./touch-timeout_<v>_<arch>.deb`
+   (or `dpkg -i` + `apt -f install`). Requires `nodejs >= 20`, `nginx` and
+   `hifiberry-auth`; recommends `hifiberry-audiocontrol`,
+   `hifiberry-dsp` and `touch-timeout`. touch-timeout's own scripts
+   (dh_installsystemd) enable and start its unit, which only starts when
+   `/sys/class/backlight/*` exists. beocreate-classic-ui ships, as
+   conffiles, the nginx site
    `/etc/nginx/sites-available/beocreate` (enabled by the packaged
    symlink in `sites-enabled/`) and the gateway manifest
    `/etc/hifiberry/auth.d/beocreate.json` (prefix `/api/beocreate`, tier
@@ -284,15 +326,17 @@ now-playing screen and the screen-brightness panel are written to
    enables+starts `beocreate2.service` (loopback port 8081) and
    try-restarts `sigmatcpserver.service` so the packaged drop-in
    (`/usr/lib/systemd/system/sigmatcpserver.service.d/10-beocreate-enable-tcp.conf`,
-   which removes `--disable-tcp`) takes effect, then runs `nginx -t` and
-   reloads nginx if it is running (postrm `remove` does the same once
-   the site symlink is gone). Both the unit and the
-   drop-in live in the package-owned `/usr/lib/systemd/system` tree
+   which removes `--disable-tcp`) takes effect, likewise
+   `touch-timeout.service` for its brightness drop-in
+   (`touch-timeout.service.d/20-beocreate-brightness.conf`), then runs
+   `nginx -t` and reloads nginx if it is running (postrm `remove` does
+   the same once the site symlink is gone). The unit and the
+   drop-ins live in the package-owned `/usr/lib/systemd/system` tree
    (not `/etc/systemd/system`, which belongs to the admin). The
    maintainer scripts use `deb-systemd-helper`/`deb-systemd-invoke`
    when available (falling back to plain `systemctl`), and `postrm
-   purge` removes `/etc/beocreate/*.json`. The package is
-   `Architecture: all`: `npm install` runs with `--omit=optional` and
+   purge` removes `/etc/beocreate/*.json` and `touch-timeout.env`. The
+   package is `Architecture: all`: `npm install` runs with `--omit=optional` and
    the multi-platform prebuilds of `bufferutil`/`utf-8-validate`
    (hard dependencies of `websocket`, with pure-JS fallbacks) are
    pruned; the build fails if any `.node` binary remains.
@@ -300,7 +344,10 @@ now-playing screen and the screen-brightness panel are written to
 
 Note: the .deb was built and inspected in the development container
 (`dpkg-deb -I`/`-c` verified); it has not been installed on a real hbosng
-device yet, so postinst/systemd behaviour on-device is untested.
+device yet, so postinst/systemd behaviour on-device is untested. The
+touch-timeout .deb was built with `dpkg-buildpackage -b` (Ubuntu 24.04
+amd64, debhelper 13.14; no sbuild or arm64 build), its unit and drop-ins
+pass `systemd-analyze verify`, and it was inspected the same way.
 
 On-device checks for the auth gateway (ADR 0001; the nginx site was
 exercised in the container against nginx 1.24 and the gateway's real
@@ -314,6 +361,21 @@ decision code, IPv4 only):
   without restarting hifiberry-auth by hand.
 - The per-request auth subrequest does not visibly slow a phone's page
   load on a Pi.
+
+On-device checks for touch-timeout (ADR 0002; the daemon itself was not run
+in the container):
+- After boot `systemctl status touch-timeout` shows it running, not a
+  failed `ConditionPathExistsGlob`, while `/sys/class/backlight/*` exists
+  (the Condition is evaluated once at boot; a miss means no dimming that
+  boot).
+- Releasing the slider changes the panel in under a second (500 ms settle
+  plus a restart).
+- The panel's real `max_brightness`: the mapping caps raw at 255 in both
+  modes, so a larger maximum never reaches full brightness.
+- systemd-backlight's boot restore runs before touch-timeout's start
+  write (otherwise the panel settles at a level other than `-b`).
+- On the pin, a SIGUSR1 wake can occasionally be lost (a play start then
+  wakes the screen only at the next touch) until touch-timeout is bumped.
 
 ## Deliberately deferred (recoverable from the `create` source repo)
 

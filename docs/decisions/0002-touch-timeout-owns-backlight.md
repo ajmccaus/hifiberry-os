@@ -32,7 +32,7 @@ Owner preference settles slider and version; the rest follows from §15 leaving 
 - [unverifiable] **The DSI backlight exists when `ConditionPathExistsGlob` is evaluated** (`After=multi-user.target`, `touch-timeout.service:3`); a miss skips dimming silently that boot (the first slider restart re-evaluates). — REOPEN-IF: after boot `systemctl status touch-timeout` shows the condition failed while `/sys/class/backlight/*` exists → start it from a udev `SYSTEMD_WANTS` rule.
 - [verified] Unbraced `$VAR` "split at whitespace, resulting in zero or more arguments" — systemd man source, tag v257, `man/systemd.service.xml:1447-1449`.
 - [verified] Pinned unit: `StartLimitIntervalSec=0`, no `RestartPreventExitStatus` (`touch-timeout.service:4,14`) — repeated restarts never lock it out.
-- [checkable] Criteria 12, 16-17 green in `run-tests.sh`, 01-05 unchanged — owner: implementer; result: pending (specs unwritten).
+- [checkable] Criteria 12, 16-17 green in `run-tests.sh`, 01-05 unchanged — owner: implementer; result: verified — 12 (`tests/02-screen.spec.js`), 16-17 (`tests/07-touch-timeout.spec.js`), whole suite green; all three fail on the pre-change extension; specs 01, 03-06 untouched.
 - [checkable-doc] Fits the plan of record (`roadmap.md:78-79,124` on `claude/hifiberry-buildroot-review-u7omrz`) — verified; drift: absent on this branch, though `CLAUDE.md:11` names it.
 - [unverifiable] Settle + restart changes the panel in under a second on the Pi (owner's option text). — REOPEN-IF: device release-to-change > 1 s.
 - [unverifiable] systemd-backlight's boot restore runs before touch-timeout's start write. — REOPEN-IF: panel settles at a level other than `-b` after boot.

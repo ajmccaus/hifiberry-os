@@ -1,6 +1,9 @@
 // Test environment for the Beocreate-on-Debian port.
 // Starts (and tears down) the mock ACR, a mock backlight sysfs directory and
 // the Beocreate server itself, wired together through environment variables.
+// The server always runs systemctl as mock-backend/mock-systemctl.js, which
+// logs every call; touch-timeout is absent (direct mode) unless the env is
+// created with {touchTimeout: "loaded"} (daemon mode, ADR 0002).
 
 const {spawn, spawnSync} = require("child_process");
 const fs = require("fs");
@@ -63,8 +66,11 @@ class BeoEnv {
 
 	// options.acrEnv: extra environment variables for the mock ACR process
 	// (e.g. {MOCK_ACR_SPOTIFY_NAME: "librespot", MOCK_ACR_VOLUME_AVAILABLE: "0"}).
+	// options.touchTimeout: the LoadState the mock systemctl reports for
+	// touch-timeout.service (default "not-found"; "loaded" = daemon mode).
 	constructor(options = {}) {
 		this.acrEnv = options.acrEnv || {};
+		this.touchTimeout = options.touchTimeout || "not-found";
 		this.acrProcess = null;
 		this.serverProcess = null;
 		this.workDir = null;
@@ -75,6 +81,8 @@ class BeoEnv {
 	get acrURL() { return "http://127.0.0.1:" + ACR_PORT; }
 	get serverURL() { return "http://127.0.0.1:" + SERVER_PORT; }
 	get backlightDeviceDir() { return path.join(this.backlightDir, "mock-backlight"); }
+	get systemctlLog() { return path.join(this.workDir, "systemctl.log"); }
+	get touchTimeoutEnvFile() { return path.join(this.configDir, "touch-timeout.env"); }
 
 	async start() {
 		this.workDir = fs.mkdtempSync(path.join(os.tmpdir(), "beo-test-"));
@@ -120,7 +128,10 @@ class BeoEnv {
 			env: Object.assign({}, process.env, {
 				BEO_CONFIG_DIR: this.configDir,
 				BEO_ACR_ADDRESS: this.acrURL,
-				BEO_BACKLIGHT_DIR: this.backlightDir
+				BEO_BACKLIGHT_DIR: this.backlightDir,
+				BEO_SYSTEMCTL: path.join(MOCK_DIR, "mock-systemctl.js"),
+				MOCK_SYSTEMCTL_LOG: this.systemctlLog,
+				MOCK_TOUCH_TIMEOUT: this.touchTimeout
 			}),
 			stdio: ["ignore", "inherit", "inherit"]
 		});
@@ -202,6 +213,18 @@ class BeoEnv {
 
 	writeScreenSettings(settings) {
 		fs.writeFileSync(path.join(this.configDir, "screen.json"), JSON.stringify(settings));
+	}
+
+	// Mock systemctl helpers: one entry per call, its arguments space-joined.
+	readSystemctlLog() {
+		if (!fs.existsSync(this.systemctlLog)) return [];
+		return fs.readFileSync(this.systemctlLog, "utf8").split("\n").filter(line => line);
+	}
+
+	// The touch-timeout EnvironmentFile the screen extension writes, or null.
+	readTouchTimeoutEnv() {
+		if (!fs.existsSync(this.touchTimeoutEnvFile)) return null;
+		return fs.readFileSync(this.touchTimeoutEnvFile, "utf8");
 	}
 }
 

@@ -1,9 +1,10 @@
-// Criteria 6 and 12 of beocreate-debian/PORTING.md:
+// Criteria 6 and 12 of beocreate-debian/PORTING.md, in direct mode (no
+// touch-timeout; the mock systemctl reports it not-found):
 // 6. Screen: the brightness slider writes the expected scaled value to the
 //    mock backlight file; the value persists across a server restart.
-// 12. Brightness floor: the UI can never apply or persist less than 5 %
-//    brightness (a persisted 0 would leave the kiosk permanently dark), and
-//    a persisted value below the floor is clamped up at startup.
+// 12. Brightness floor: the UI can never apply less than raw 15 (touch-timeout's
+//    -b minimum) or persist less than 6 % (ceil(1500 / max_brightness 255)),
+//    and a persisted value below the floor is clamped up at startup.
 
 const {test, expect} = require("@playwright/test");
 const fs = require("fs");
@@ -41,7 +42,8 @@ test("6. brightness slider writes scaled value to the backlight and persists acr
 	await waitFor(async () => env.readBrightness() === Math.round(uiValue / 100 * 255),
 		"backlight brightness file to be " + Math.round(uiValue / 100 * 255));
 
-	// The chosen level is persisted in screen.json (settings file).
+	// The chosen level is persisted in screen.json once the slider has settled
+	// (500 ms without a message), so poll for it.
 	await waitFor(async () => {
 		const settings = env.readScreenSettings();
 		return settings && Math.round(settings.brightness) === Math.round(uiValue);
@@ -61,9 +63,9 @@ test("6. brightness slider writes scaled value to the backlight and persists acr
 	expect(Math.round(restored)).toBe(Math.round(uiValue));
 });
 
-test("12. brightness has a 5 % floor: UI can neither apply nor persist black", async ({page}) => {
-	const FLOOR_PERCENT = 5;
-	const FLOOR_RAW = Math.round(FLOOR_PERCENT / 100 * 255);
+test("12. brightness has a raw 15 / 6 % floor: UI can neither apply nor persist black", async ({page}) => {
+	const FLOOR_PERCENT = 6;
+	const FLOOR_RAW = 15;
 
 	await openApp(page);
 	await showExtension(page, "screen");
@@ -73,7 +75,7 @@ test("12. brightness has a 5 % floor: UI can neither apply nor persist black", a
 	// clamp at the floor instead of going dark.
 	await dragSlider(page, "#screen-brightness-slider", 0);
 	await waitFor(async () => env.readBrightness() === FLOOR_RAW,
-		"backlight brightness to clamp at the " + FLOOR_PERCENT + " % floor");
+		"backlight brightness to clamp at raw " + FLOOR_RAW);
 	await waitFor(async () => {
 		const settings = env.readScreenSettings();
 		return settings && settings.brightness === FLOOR_PERCENT;

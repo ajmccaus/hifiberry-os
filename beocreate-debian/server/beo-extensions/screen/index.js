@@ -16,11 +16,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
 // BEOCREATE SCREEN EXTENSION (hbosng)
-// Controls the brightness of an attached display through the Linux backlight
-// sysfs interface (/sys/class/backlight, overridable with BEO_BACKLIGHT_DIR).
+// Brightness slider for an attached display (ADR 0002). The mode is queried
+// per use (once per drag) with `systemctl show -p LoadState --value
+// touch-timeout.service`:
+// - daemon mode ("loaded"): touch-timeout is the only backlight writer. This
+//   extension never writes sysfs; the settled level reaches the daemon as
+//   BEO_SCREEN_ARGS=-b <raw> in <dataDirectory>/touch-timeout.env (read by the
+//   drop-in package/touch-timeout-brightness.conf) plus a restart. Playback
+//   starting from standby wakes the daemon with SIGUSR1.
+// - direct mode (anything else, or systemctl fails): writes the backlight
+//   sysfs (/sys/class/backlight, overridable with BEO_BACKLIGHT_DIR) itself
+//   and restores the level at startup.
+// The UI always shows the persisted level (screen.json), never sysfs, which
+// holds the dim level while touch-timeout has the screen dimmed. systemctl is
+// BEO_SYSTEMCTL (default "systemctl"; the test seam), run without a shell.
 
 var fs = require("fs");
 var path = require("path");
+var execFile = require("child_process").execFile;
 
 var debug = beo.debug;
 var version = require("./package.json").version;
@@ -34,13 +47,37 @@ var backlightRoot = process.env.BEO_BACKLIGHT_DIR || "/sys/class/backlight";
 var backlightDirectory = null; // Full path of the detected backlight device.
 var maxBrightness = 255;
 
-// Minimum brightness (percent) applied and persisted through the UI/settings
-// path. Without a floor, saving 0 would leave the kiosk permanently dark with
-// no on-device way to recover. Deliberately turning the display off belongs
-// to the touch-timeout feature, not this slider. Direct API callers
-// (beo.extensions.screen.setBrightness) can still apply lower values, but
-// those are never persisted below the floor.
-var MINIMUM_BRIGHTNESS = 5;
+var daemonEnvFile = path.join(beo.dataDirectory, "touch-timeout.env");
+
+// Floor and ceiling in raw backlight units, the same in both modes:
+// touch-timeout's -b accepts 15-255 and silently runs its default (150)
+// outside it. The floor also keeps a persisted 0 from leaving the kiosk dark
+// with no on-device recovery; switching the display off belongs to
+// touch-timeout. The persisted floor is the smallest percentage mapping to
+// at least MINIMUM_RAW.
+var MINIMUM_RAW = 15;
+var MAXIMUM_RAW = 255;
+
+// Slide and stop send the same message, so release is detected server-side:
+// no message for this long means the slider has settled.
+var SETTLE_MS = 500;
+var settleTimer = null;
+var dragDaemonMode = null; // Promise of the mode, queried once per drag.
+
+function systemctl(args, callback) {
+	execFile(process.env.BEO_SYSTEMCTL || "systemctl", args, function(error, stdout) {
+		if (error && debug) console.log("'systemctl "+args.join(" ")+"' failed: "+error.message.trim());
+		if (callback) callback(error, stdout);
+	});
+}
+
+function daemonMode() {
+	return new Promise(function(resolve) {
+		systemctl(["show", "-p", "LoadState", "--value", "touch-timeout.service"], function(error, stdout) {
+			resolve(!error && String(stdout).trim() == "loaded");
+		});
+	});
+}
 
 function detectBacklight() {
 	// Auto-detect the first backlight device (same approach as touch-timeout).
@@ -75,46 +112,80 @@ function detectBacklight() {
 	return backlightDirectory;
 }
 
-function applyBrightness(percentage, save) {
-	if (percentage == undefined || isNaN(parseFloat(percentage))) return false;
+// Clamps to [floor, 100] percent; null if the value is not a number.
+function clampPercentage(percentage) {
 	percentage = parseFloat(percentage);
-	if (percentage < 0) percentage = 0;
-	if (percentage > 100) percentage = 100;
-	if (save && percentage < MINIMUM_BRIGHTNESS) percentage = MINIMUM_BRIGHTNESS; // Never persist below the floor.
-	if (!backlightDirectory) detectBacklight();
-	if (backlightDirectory) {
-		scaled = Math.round(percentage / 100 * maxBrightness);
-		try {
-			fs.writeFileSync(path.join(backlightDirectory, "brightness"), String(scaled));
-			if (debug >= 2) console.log("Screen brightness set to "+percentage+" % ("+scaled+"/"+maxBrightness+").");
-		} catch (error) {
-			console.error("Error writing screen brightness:", error);
-			return false;
-		}
-		settings.brightness = percentage;
-		if (save) beo.saveSettings("screen", settings, true); // Save immediately so the level survives restarts.
-		return true;
-	}
-	return false;
+	if (isNaN(percentage)) return null;
+	return Math.max(Math.ceil(MINIMUM_RAW * 100 / maxBrightness), Math.min(100, percentage));
 }
 
-function getBrightness() {
-	if (!backlightDirectory) detectBacklight();
-	if (backlightDirectory) {
+function rawBrightness(percentage) {
+	return Math.max(MINIMUM_RAW, Math.min(MAXIMUM_RAW, Math.round(percentage * maxBrightness / 100)));
+}
+
+// Direct mode only.
+function writeBacklight(percentage) {
+	if (!backlightDirectory) return;
+	var raw = rawBrightness(percentage);
+	try {
+		fs.writeFileSync(path.join(backlightDirectory, "brightness"), String(raw));
+		if (debug >= 2) console.log("Screen brightness set to "+percentage+" % ("+raw+"/"+maxBrightness+").");
+	} catch (error) {
+		console.error("Error writing screen brightness:", error);
+	}
+}
+
+// Daemon mode only: hand the persisted level to touch-timeout. The env file is
+// replaced atomically (temp + rename) so the daemon never reads half of it.
+function updateDaemon(restartIfUnchanged) {
+	var content = "BEO_SCREEN_ARGS=-b "+rawBrightness(settings.brightness)+"\n";
+	var current = null;
+	try {
+		current = fs.readFileSync(daemonEnvFile, "utf8");
+	} catch (error) {} // Missing: written below.
+	if (current == content && !restartIfUnchanged) return;
+	if (current != content) {
 		try {
-			raw = parseInt(fs.readFileSync(path.join(backlightDirectory, "brightness"), "utf8").trim());
-			if (!isNaN(raw)) return Math.round(raw / maxBrightness * 100);
+			fs.writeFileSync(daemonEnvFile+".tmp", content);
+			fs.renameSync(daemonEnvFile+".tmp", daemonEnvFile);
 		} catch (error) {
-			console.error("Error reading screen brightness:", error);
+			console.error("Error writing touch-timeout arguments:", error);
+			return;
 		}
 	}
-	return null;
+	systemctl(["restart", "touch-timeout.service"]);
+}
+
+function setBrightness(percentage) {
+	if (!backlightDirectory) detectBacklight();
+	percentage = clampPercentage(percentage);
+	if (backlightDirectory && percentage != null) {
+		settings.brightness = percentage;
+		if (!dragDaemonMode) dragDaemonMode = daemonMode();
+		dragDaemonMode.then(function(daemon) {
+			// The latest level, not this message's: it may have moved on meanwhile.
+			if (!daemon) writeBacklight(settings.brightness);
+		});
+		clearTimeout(settleTimer);
+		settleTimer = setTimeout(settleBrightness, SETTLE_MS);
+	}
+	sendBrightnessToUI();
+}
+
+function settleBrightness() {
+	var mode = dragDaemonMode;
+	dragDaemonMode = null;
+	settleTimer = null;
+	beo.saveSettings("screen", settings, true); // Once per drag, not per tick (SD card).
+	mode.then(function(daemon) {
+		if (daemon) updateDaemon(true);
+	});
 }
 
 function sendBrightnessToUI() {
-	brightness = getBrightness();
+	if (!backlightDirectory) detectBacklight();
 	beo.sendToUI("screen", {header: "brightness", content: {
-		brightness: (brightness != null) ? brightness : settings.brightness,
+		brightness: settings.brightness,
 		available: (backlightDirectory) ? true : false
 	}});
 }
@@ -123,15 +194,22 @@ beo.bus.on('general', function(event) {
 
 	if (event.header == "startup") {
 		detectBacklight();
-		// Restore the persisted brightness level. A persisted value below the
-		// floor (e.g. from an older version or hand-edited settings) is
-		// clamped up so the screen is never restored to black.
-		if (backlightDirectory && settings.brightness != undefined) {
-			if (settings.brightness < MINIMUM_BRIGHTNESS) {
-				settings.brightness = MINIMUM_BRIGHTNESS;
+		if (backlightDirectory) {
+			// A persisted level below the floor (older version, hand-edited
+			// file) is clamped up so the screen is never restored to black.
+			var level = clampPercentage(settings.brightness);
+			if (level == null) level = defaultSettings.brightness;
+			if (level != settings.brightness) {
+				settings.brightness = level;
 				beo.saveSettings("screen", settings, true);
 			}
-			applyBrightness(settings.brightness, false);
+			daemonMode().then(function(daemon) {
+				if (daemon) {
+					updateDaemon(false);
+				} else {
+					writeBacklight(settings.brightness);
+				}
+			});
 		}
 	}
 
@@ -139,6 +217,17 @@ beo.bus.on('general', function(event) {
 		if (event.content.extension == "screen") {
 			sendBrightnessToUI();
 		}
+	}
+});
+
+beo.bus.on("sources", function(event) {
+	// Playback starting from standby wakes a dimmed or blanked screen.
+	if (event.header == "sourcesChanged" &&
+		event.content.fromStandby && event.content.currentSource) {
+		daemonMode().then(function(daemon) {
+			// Errors are ignored: e.g. the daemon is not running this boot.
+			if (daemon) systemctl(["kill", "--signal=SIGUSR1", "touch-timeout.service"]);
+		});
 	}
 });
 
@@ -164,19 +253,11 @@ beo.bus.on("screen", function(event) {
 					brightness = event.content.brightness;
 				}
 			}
-			if (brightness != undefined) {
-				if (applyBrightness(brightness, true)) {
-					beo.sendToUI("screen", {header: "brightness", content: {brightness: settings.brightness, available: true}});
-				} else {
-					beo.sendToUI("screen", {header: "brightness", content: {brightness: settings.brightness, available: false}});
-				}
-			}
+			if (brightness != undefined) setBrightness(brightness);
 			break;
 	}
 });
 
 module.exports = {
-	version: version,
-	setBrightness: applyBrightness,
-	getBrightness: getBrightness
+	version: version
 };
