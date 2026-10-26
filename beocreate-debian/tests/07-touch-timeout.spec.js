@@ -1,12 +1,15 @@
 // Criteria 16-17 of beocreate-debian/PORTING.md (ADR 0002), in daemon mode:
 // the mock systemctl reports touch-timeout.service "active".
-// 16. The slider never writes the backlight; each settled drag writes the
-//     mapped `-b` to touch-timeout.env and try-restarts the daemon exactly once;
+// 16. The slider never writes the backlight; each settled drag queries the mode
+//     once, writes the mapped `-b` to touch-timeout.env and try-restarts the
+//     daemon exactly once;
 //     a drag to 0 gives `-b 15`; a dimmed backlight file does not change the
 //     level the UI shows; at startup a missing env file is rewritten from
 //     screen.json with one restart, an unchanged one causes none.
-// 17. Playback starting from standby sends touch-timeout exactly one SIGUSR1;
-//     a push while already playing sends none.
+// 17. Playback starting from standby (no ACR player playing) sends touch-timeout
+//     exactly one SIGUSR1, also for a player without a Beocreate source
+//     (AirPlay's `shairport`); a push while already playing and a track change
+//     during playback send none.
 
 const {test, expect} = require("@playwright/test");
 const fs = require("fs");
@@ -17,6 +20,7 @@ test.describe.configure({mode: "serial"});
 
 const RESTART = "try-restart touch-timeout.service";
 const WAKE = "kill --signal=SIGUSR1 touch-timeout.service";
+const MODE_QUERY = "is-active touch-timeout.service";
 const SLIDER = "#screen-brightness-slider";
 
 let env;
@@ -41,6 +45,7 @@ function envFor(raw) {
 
 // Drags the slider and waits for the settled level to reach touch-timeout:
 // the env file holds `-b <raw>` and exactly one restart follows (none later).
+// The drag sends a message per tick; the mode is queried once for all of them.
 async function dragAndSettle(page, fraction, expectRaw) {
 	const mark = env.readSystemctlLog().length;
 	await dragSlider(page, SLIDER, fraction);
@@ -50,6 +55,7 @@ async function dragAndSettle(page, fraction, expectRaw) {
 	await waitFor(async () => callsSince(mark, RESTART) >= 1, "touch-timeout restart");
 	await new Promise(r => setTimeout(r, 1500));
 	expect(callsSince(mark, RESTART)).toBe(1);
+	expect(callsSince(mark, MODE_QUERY)).toBe(1);
 	return uiValue;
 }
 
@@ -115,4 +121,41 @@ test("17. playback from standby wakes touch-timeout with one SIGUSR1", async ({p
 	expect(res.status).toBe(200);
 	await new Promise(r => setTimeout(r, 2000));
 	expect(callsSince(mark, WAKE)).toBe(0);
+
+	// A track change during playback: no wake.
+	mark = env.readSystemctlLog().length;
+	res = await env.acrHook("/__test/song", {title: "Next Track While Playing"});
+	expect(res.status).toBe(200);
+	await expect(page.locator("#track-string .title")).toHaveText("Next Track While Playing", {timeout: 10000});
+	await new Promise(r => setTimeout(r, 1500));
+	expect(callsSince(mark, WAKE)).toBe(0);
+});
+
+// ACR's AirPlay player has no Beocreate source (sources maps no extension to it).
+function playerEvent(name, state) {
+	return env.acrHook("/__test/event", {type: "state_changed", state: state, player_name: name, player_id: name,
+		source: {player_name: name, player_id: name + ":6600"}});
+}
+
+test("17. AirPlay starting from standby wakes touch-timeout too", async ({page}) => {
+	await openApp(page);
+	await showNowPlaying(page);
+	const playButton = page.locator("#now-playing .now-playing-transport .symbol.button").nth(1);
+	await env.acrHook("/__test/player-state", {player: "spotify", state: "Paused"});
+	await expect(playButton).toHaveCSS("mask-image", /\/play\.svg/, {timeout: 10000});
+	await new Promise(r => setTimeout(r, 500));
+
+	let mark = env.readSystemctlLog().length;
+	expect((await playerEvent("shairport", "playing")).status).toBe(200);
+	await waitFor(async () => callsSince(mark, WAKE) >= 1, "SIGUSR1 for AirPlay");
+	await new Promise(r => setTimeout(r, 1500));
+	expect(callsSince(mark, WAKE)).toBe(1);
+
+	// Spotify starting while AirPlay plays is not a start from standby.
+	mark = env.readSystemctlLog().length;
+	await env.acrHook("/__test/player-state", {player: "spotify", state: "Playing", is_active: true});
+	await expect(playButton).toHaveCSS("mask-image", /\/pause\.svg/, {timeout: 10000});
+	await new Promise(r => setTimeout(r, 1500));
+	expect(callsSince(mark, WAKE)).toBe(0);
+	await playerEvent("shairport", "stopped");
 });

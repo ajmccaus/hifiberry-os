@@ -47,9 +47,9 @@ test("2. UI loads without fatal JS errors and shows mock now-playing metadata", 
 	// Open the now-playing screen and screenshot it.
 	await showNowPlaying(page);
 	await expect(page.locator("#now-playing-container")).toBeVisible();
-	fs.mkdirSync(path.join(__dirname, "screenshots"), {recursive: true});
+	fs.mkdirSync(path.join(__dirname, "test-results", "screenshots"), {recursive: true}); // Untracked (.gitignore).
 	await page.waitForTimeout(1500); // Allow artwork + transitions to settle.
-	await page.screenshot({path: path.join(__dirname, "screenshots", "now-playing.png")});
+	await page.screenshot({path: path.join(__dirname, "test-results", "screenshots", "now-playing.png")});
 
 	// Cover art: the DOM must point at the Beocreate server's artwork proxy,
 	// not at the localhost-only ACR address (remote browsers can't reach it).

@@ -17,11 +17,11 @@ Crux: the gateway can tier only the upgrade, so the owner traded a password on r
 
 Owner, asked "Beocreate's commands all travel over one WebSocket, so the password gateway can give it only ONE tier for everything. Phones and laptops on your LAN: what should happen?", chose **"No password needed"** over "Password-protected (Recommended)".
 
-1. **Backend loopback-only.** Both beo-server listeners bind loopback, hardcoded (`:373`, `:375`); new key `listenPort`, default 8081. `port` stays 8080 = the public port bonjour (`product-information/index.js:308`) and art URLs (`sources/index.js:558`) advertise.
+1. **Backend loopback-only.** Both beo-server listeners bind loopback, hardcoded (`:373`, `:375`); new key `listenPort`, default 8081. `port` stays 8080 = the public port bonjour (`product-information/index.js:308`) and art URLs (`sources/index.js:614`) advertise.
 2. **nginx owns :8080** — own server block (a :80 sub-path needs a client edit: the WS is hard-rooted). Own `auth_request` location → hifiberry-auth verify with `X-Original-URI /api/beocreate$request_uri`; ship `auth.d/beocreate.json`: `match_prefix /api/beocreate`, `default_tier ok`, no rules. `Host $http_host`; Upgrade/Connection map.
-3. **Loopback ungated** (`satisfy any` + `allow` loopback v4/v6): the kiosk keeps `http://localhost:8080` and works under every policy.
+3. **Loopback ungated** (`satisfy any` + `allow` loopback v4/v6): the kiosk keeps `http://localhost:8080` and works under every policy; 502/503/504 → a self-reloading page, so a backend restart never strands it.
 4. **Policy `all`, LAN:** `error_page 401` → 302 `http://$host/` (hbos-ui, whose 401 handler opens sign-in: hbos-ui `src/stores/auth.ts:157-169`); its cookie (`path=/`, no domain: `server.py:95-96`) then covers :8080. User returns to :8080 by hand.
-5. **Keep the accepted risk LAN-only:** the WS rejects an Origin whose host ≠ Host (`communication.js:107` accepts any); delete the REST POST route (`beo-server.js:410-451`).
+5. **Keep the accepted risk LAN-only:** the WS rejects an Origin whose host ≠ Host (`communication.js:107` accepts any); delete the REST POST route (`beo-server.js:410-451`); nginx forbids cross-site framing (`X-Frame-Options SAMEORIGIN`, CSP `frame-ancestors 'self'`), else a page could clickjack the UI.
 6. **Package:** `Depends: nginx, hifiberry-auth` (as hbos-ui `debian/control:11`); site + manifest shipped as package files under /etc (the auth.d dpkg trigger fires only for those).
 
 One change, before the port's first device install.
@@ -42,10 +42,11 @@ Under policies `unset`/`off`/`risky` (the default), any LAN device or guest can,
 - [verified] aes67's `Host $host` drops `:8080` at the backend → Origin == Host fails; hence `$http_host`.
 - [verified] A refused upgrade = 5 retries, then "can't be reached" (`beo-comms.js:98-130`, loaded by `index.html:31`): kiosk-ux's no-401-path claim holds; upstream-alignment's "client recovers via `/api/auth/login`" is refuted.
 - [verified] `/api/beocreate` is inert on :80: hbos-ui's `location /api/` 404s with `auth_request off` (`hifiberry-webui.nginx:38-42`, hbos-ui@782fa58).
-- [verified] The harness reaches the server on loopback (`tests/playwright.config.js:34`).
+- [verified] The harness reaches the server on loopback (`tests/playwright.config.js:35`).
 - [verified] The SigmaTCP drop-in binds localhost (`sigmatcp-enable-tcp.conf:9` `--localhost` → hifiberry-dsp@551c195 `sigmatcp.py:1384-1398`): no LAN door. Its overlap with `/api/dsptoolkit` is a separate call.
-- [checkable] New spec: foreign-Origin WS refused, `POST /general-settings/restartProduct` 404, no listener on a non-loopback address; whole suite green — builder; result: verified — criteria 13-15 (`tests/06-exposure.spec.js`), whole suite green; 13 and 15 fail on the pre-change server; the shipped `package/beocreate.nginx` (ports remapped, IPv4 only) passes the e2e above against the real server, Chromium included.
-- [unverifiable] On device: `ss -ltnp` shows node on loopback only, IPv6 `listen [::]:8080` + `allow ::1` work (untested: sandbox has no IPv6; mirrors hbos-ui's `listen [::]:80`), LAN :8080 302s under `all` — REOPEN-IF any fails (PORTING.md on-device item).
+- [checkable] New spec: foreign-Origin WS refused, `POST /general-settings/restartProduct` 404, no listener on a non-loopback address; whole suite green — builder; result: verified — criteria 13-15 (`tests/06-exposure.spec.js`), whole suite green; 13 and 15 fail on the pre-change server; the shipped `package/beocreate.nginx` (ports remapped, IPv4 only) passes the e2e above against the real server, Chromium included; checked in as criteria 37-40 (`tests/11-nginx-gate.spec.js`: the shipped site, a verify stub applying the shipped manifest).
+- [checkable] Criterion 15 is TCP only; node also binds UDP 5353 on all interfaces (dnssd2 mDNS responder, `NetworkInterface.js:211,259`, from code): a root LAN listener outside the gateway — owner: device tester (`ss -lnup`). Named exception or avahi: owner's call, open.
+- [unverifiable] On device: `ss -lntup` shows node on TCP loopback only, IPv6 `listen [::]:8080` + `allow ::1` work (untested: sandbox has no IPv6; mirrors hbos-ui's `listen [::]:80`), LAN :8080 302s under `all` — REOPEN-IF any fails (PORTING.md on-device item).
 - [unverifiable] The per-request auth subrequest (LAN only; upstream exempts static) doesn't visibly slow a phone's load on a Pi — REOPEN-IF it does → `auth_request off` on the static prefixes.
 
 ## Rejected alternatives

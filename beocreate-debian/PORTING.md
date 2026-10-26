@@ -85,28 +85,41 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
   panel is held at full brightness rather than persisting > 100 %; direct mode
   also caps the raw write at `max_brightness` (the kernel rejects a larger
   value), and the daemon caps `-b` to it itself (`main.c:577-582`).
-- Mode, queried once per drag (and at startup / on wake) with
-  `systemctl is-active touch-timeout.service` — whether the daemon is actually
-  **running**, so an admin-stopped, disabled or crash-looping unit (all still
-  "loaded") is not treated as the backlight writer:
-  - **daemon mode** (`active`): touch-timeout is the only backlight
+- Mode, queried once per drag (and at startup, on wake, when the panel asks)
+  with `systemctl is-active touch-timeout.service` — whether the daemon is
+  actually **running**, so an admin-stopped, disabled or crash-looping unit
+  (all still "loaded") is not treated as the backlight writer — and, when it
+  is, `systemctl show -p ExecStart --value touch-timeout.service`:
+  - **daemon mode** (`active`, ExecStart carrying `$BEO_SCREEN_ARGS`):
+    touch-timeout is the only backlight
     writer; the extension never writes sysfs and there is no live
     preview. On settle it atomically writes `BEO_SCREEN_ARGS=-b <raw>` to
     `/etc/beocreate/touch-timeout.env` and `try-restart`s
     `touch-timeout.service` (never *starts* a unit the admin stopped), whose
-    drop-in (`package/touch-timeout-brightness.conf`) runs
-    `/usr/bin/touch-timeout $BEO_SCREEN_ARGS` (unbraced: no file, no
-    arguments, the daemon's defaults). At startup the env file is
+    drop-in (`package/touch-timeout-brightness.conf`, which owns the admin
+    channel `/etc/default/touch-timeout`) runs
+    `/usr/bin/touch-timeout $TOUCH_TIMEOUT_ARGS $BEO_SCREEN_ARGS` (unbraced:
+    no file, no arguments, the daemon's defaults). At startup the env file is
     rewritten from `screen.json`, restarting the daemon only if it
-    changed. Playback starting from standby (bus `sourcesChanged` with
-    `fromStandby` and a `currentSource`) wakes the screen with
-    `systemctl kill --signal=SIGUSR1 touch-timeout.service`.
+    changed.
+  - **fixed mode** (`active`, but an admin ExecStart override such as the
+    pinned unit's own `systemctl edit` example replaced the drop-in's, so the
+    daemon never reads `$BEO_SCREEN_ARGS`): the daemon holds the admin's `-b`;
+    the UI is told the slider is unavailable and brightness messages change
+    nothing (no persist, no sysfs write, no restart) rather than showing a
+    level that is never applied.
   - **direct mode** (not running, or `systemctl` fails — then no daemon is
     writing, so there is no second writer): every slider message writes
     `brightness` in sysfs; startup restores the level.
-- Both modes mirror the persisted level into `touch-timeout.env`, so whenever
-  the daemon next starts (installed or `systemctl start` while the server runs)
-  it comes up at the slider's `-b` rather than its default.
+- Wake on play: an ACR `state_changed` to `playing` while no ACR player was
+  playing (standby, tracked from `/api/players` at each event-stream connect)
+  runs `systemctl kill --signal=SIGUSR1 touch-timeout.service` unless in
+  direct mode. Every ACR player counts, also those without a Beocreate source
+  (AirPlay `shairport`, `bluetooth`).
+- Every mode mirrors the persisted level into `touch-timeout.env` (at startup,
+  and on settle in daemon and direct mode), so whenever the daemon next starts
+  with the drop-in (installed or `systemctl start` while the server runs) it
+  comes up at the slider's `-b` rather than its default.
 - Dimming is turned off with `systemctl mask` (or `disable --now` plus leaving
   it stopped): `is-active` then reports not-running and the extension drives
   the backlight directly.
@@ -144,22 +157,26 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
 12. Brightness floor: the UI can neither apply less than raw 15 nor
     persist less than 6 %; a persisted lower value is clamped up at
     startup.
-13. WebSocket Origin check: a handshake with Origin `http://evil.example`
-    or `null` is refused (403); a same-origin one (raw and from Chromium)
-    and one without Origin are accepted.
+13. WebSocket Origin check: a handshake with Origin `http://evil.example`,
+    `null` or the server's hostname on another port is refused (403); a
+    same-origin one (raw and from Chromium) and one without Origin are
+    accepted.
 14. No REST POST route: `POST /general-settings/restartProduct` is 404.
 15. Loopback only: a TCP connect to the machine's first non-internal
     IPv4 address on the server port is refused (skipped if there is none).
-16. touch-timeout daemon mode (mock `systemctl` reports it `loaded`): the
-    slider never writes the backlight file; each settled drag writes the
-    mapped `-b` to `touch-timeout.env` and restarts the daemon exactly
-    once; a drag to 0 gives `-b 15`; with a dim value in the backlight
+16. touch-timeout daemon mode (mock `systemctl` reports it `active`): the
+    slider never writes the backlight file; each settled drag queries the
+    mode once, writes the mapped `-b` to `touch-timeout.env` and
+    try-restarts the daemon exactly once; a drag to 0 gives `-b 15`; with a
+    dim value in the backlight
     file the slider still shows the saved level; at startup a deleted env
     file is rewritten with one restart, an unchanged one causes none.
 17. Wake on play (daemon mode): a pushed state change from nothing
     playing to playing logs exactly one
-    `systemctl kill --signal=SIGUSR1 touch-timeout.service`; a second
-    push while already playing logs none.
+    `systemctl kill --signal=SIGUSR1 touch-timeout.service`, also for AirPlay
+    (`shairport`, no Beocreate source); a second push while already playing,
+    a track change during playback, and Spotify starting while AirPlay plays
+    log none.
 18. Late enrichment: after a pushed `song_changed` without artwork, a
     `song_information_update` carrying only `cover_art_url` (title/artist
     matching) makes the DOM artwork the proxied image; title, artist and
@@ -192,6 +209,35 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     ACR reports are enabled again and the playing one is current.
 29. Transport capabilities come from `GET /api/players`: a player ACR reports
     without `next` gets no next button, even after a pushed state change.
+30. Device layout (`port` 8080, `listenPort` 8081): the server answers on
+    127.0.0.1:8081 and nothing of it accepts on :8080 (nginx's).
+31. With `server.key`/`server.cert` present the HTTPS listener runs on
+    loopback (TLS handshake) and is refused on the LAN address.
+32. Direct mode never signals or (re)starts touch-timeout: after a drag and a
+    playback start from standby the `systemctl` log holds only mode queries.
+33. A raw `state_changed` for the non-active `mpd` player (the mock's REST
+    state unchanged) sets that source's state from the event's own
+    `player_name`.
+34. The stream URL is ACR's `stream_url`; a matching update carrying only
+    `album` and `stream_url` changes both and keeps the shown artwork.
+35. A failing ACR volume read or write (503) keeps the last known volume: the
+    UI is never told 0.
+36. touch-timeout running under an admin ExecStart override without
+    `$BEO_SCREEN_ARGS`: the slider is reported unavailable, and a brightness
+    message persists nothing, writes no backlight and restarts nothing.
+37. The shipped nginx site (`11-nginx-gate`, nginx :8080 → server :8081,
+    a verify stub applying the shipped manifest; skipped without nginx): a
+    non-loopback client gets 200 and WebSocket 101 under policy `risky` with
+    the gateway seeing `/api/beocreate<uri>`, 302 to `http://<host>/` under
+    `all` without a session and 200 with one, 500 with the auth backend down;
+    loopback gets 200 under `all` and with the backend down, with no
+    subrequest.
+38. Through nginx the WebSocket refuses a cross-site Origin (403) and accepts
+    the same origin (101, `Host` with its port); the UI connects in Chromium.
+39. nginx forbids cross-site framing: `X-Frame-Options: SAMEORIGIN` and
+    `Content-Security-Policy: frame-ancestors 'self'`, the sign-in 302 too.
+40. With beo-server down nginx answers 502 with a page that reloads itself
+    (`<meta http-equiv="refresh">`), so the keyboardless kiosk recovers.
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -199,7 +245,8 @@ matching the mock's image.
 
 ## Status
 
-All twenty-nine Playwright criteria above pass (see "Running the tests").
+All forty Playwright criteria above pass (see "Running the tests"; 37-40 need
+`nginx` installed and are skipped without it).
 
 ## Patches applied to the vendored server
 
@@ -267,6 +314,10 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
     `capabilities` from `GET /api/players` (0.23.6, snake_case) into
     `supported_commands`; `capabilities_changed` events update them too. The
     default set is used only for a player that reports none.
+  - The stream URL (`metadata.uri`, mpd's radio/music child-source key) is
+    read from `stream_url`, the field of ACR's `Song`
+    (`crates/acr-types/src/song.rs` at 0.23.6), falling back to `uri`
+    (websocket.md's older `song_changed` example).
   - `processAudioControlMetadata` gained a guard for players whose
     extension isn't installed (the old code defaulted to `bluetooth`,
     which is dropped).
@@ -277,7 +328,9 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   `GET /api/volume/info`, reads from `GET /api/volume/state`, writes via
   `POST /api/volume/set {percentage}`, external changes from the
   `volume_changed` event. Volume mapping/range, mute logic, interact
-  triggers and all UI messages (`systemVolume`) unchanged.
+  triggers and all UI messages (`systemVolume`) unchanged. A failed ACR read
+  or write (unreachable, 503) keeps the last known volume (the amixer-era
+  path reported `null`, which maps to 0).
   `checkCurrentMixerAndReconfigure` is a no-op (ACR owns the pipeline).
   When no volume control is available (`/api/volume/info` reports
   `available:false`), `setVolume`/`getVolume` now guard their optional
@@ -341,12 +394,12 @@ mirrored by the mock:
   unchanged, never cleared. It can arrive after the next `song_changed`,
   so the port applies it only when each `title`/`artist` it carries matches
   the song held for that player (ACR's own rule, `apply_song_information`,
-  `player_controller.rs:759`); then a present `album`, `uri` or
+  `player_controller.rs:759`); then a present `album`, stream URL or
   `cover_art_url` (proxied like `song_changed` artwork) is merged in. ACR
   itself merges only `cover_art_url`, `liked` and `metadata`, never `album`
-  or `uri`, and publishes the full stored song only when the merge changed it
-  (`api.md:624`); the port's extra `album`/`uri` merge is harmless against the
-  full-song event but is not ACR's rule. The mock mirrors ACR: it broadcasts
+  or the stream URL, and publishes the full stored song only when the merge
+  changed it (`api.md:624`); the port's extra `album`/stream-URL merge is
+  harmless against the full-song event but is not ACR's rule. The mock mirrors ACR: it broadcasts
   the merged full song, only on a change, and never replaces artwork a song
   already has (`song.rs cover_art_is_replaceable`). `/__test/event` carries a
   raw partial for the stale/mismatched cases ACR never actually sends as a
@@ -391,10 +444,7 @@ device before the port can be called contract-proven:
   artist, album, etc."). The port reads artwork from `coverart_url`,
   `artwork_url` or `cover_art_url` (the mock uses `cover_art_url`, the
   key documented for both now-playing and the song events) and title from
-  `title`/`name`; relative artwork URLs go through the artwork proxy. The
-  stream URL (mpd's radio/music child-source choice) is read from `uri`,
-  as in websocket.md's `song_changed` example, but ACR's `Song` type
-  (`crates/acr-types/src/song.rs` at 0.23.6) names it `stream_url`.
+  `title`/`name`; relative artwork URLs go through the artwork proxy.
 - Transport capabilities: `GET /api/players` carries each player's
   `capabilities` (`players.rs:300-311`, `PlayerCapability` serialised
   snake_case), and `capabilities_changed` updates them; the port maps them to
@@ -415,22 +465,24 @@ Installs npm dependencies for `server/`, `mock-backend/` and `tests/`,
 then runs Playwright (Chromium; honours `PLAYWRIGHT_BROWSERS_PATH`, falls
 back to the newest `chromium-*` build found there). Each spec file starts
 its own mock ACR (:1080), mock backlight directory and beo-server (its
-`systemctl` is the logging mock) and tears them down; port 8080/1080 must
-be free. There is no nginx in the suite: the server listens directly on
-:8080 (`listenPort` = `port`).
-The ten spec files cover the twenty-nine criteria: `01-ui` (1-5),
-`02-screen` (6, 12), `03-events` (7-9, pushed WebSocket events),
+`systemctl` is the logging mock) and tears them down; ports 8080, 8081,
+8443 and 1080 must be free. Except in `11-nginx-gate` and criterion 30 the
+server listens directly on :8080 (`listenPort` = `port`), with no nginx.
+The eleven spec files cover the forty criteria: `01-ui` (1-5),
+`02-screen` (6, 12, 32), `03-events` (7-9, 33, pushed WebSocket events),
 `04-player-naming` (10, mock started with
 `MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
-with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15, 20-22),
+with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15, 20-22, 30-31),
 `07-touch-timeout` (16-17, mock `systemctl` reporting touch-timeout
-`active`), `08-acr-enrichment` (18-19, pushed `song_information_update`),
-`09-screen-hardware` (23-26, the mode gate and mapping on other hardware:
+`active`), `08-acr-enrichment` (18-19, 34, pushed `song_information_update`),
+`09-screen-hardware` (23-26, 36, the mode gate and mapping on other hardware:
 `MOCK_BACKLIGHT_MAX`, a non-active or failing `systemctl`, a second
-backlight) and `10-system` (27-29, shutdown, ACR up after the server, and
-`/api/players` capabilities via `MOCK_ACR_SPOTIFY_CAPABILITIES`). Screenshots
-of the now-playing screen and the screen-brightness panel are written to
-`tests/screenshots/`.
+backlight, an admin ExecStart), `10-system` (27-29, 35: shutdown, ACR up after
+the server, `/api/players` capabilities via `MOCK_ACR_SPOTIFY_CAPABILITIES`,
+a failing volume control) and `11-nginx-gate` (37-40, the shipped nginx site;
+needs `nginx`, runs it from a temp prefix, and treats requests from 127.0.0.2
+as LAN). Screenshots of the now-playing screen and the screen-brightness
+panel are written to the untracked `tests/test-results/screenshots/`.
 
 ## Installing on an hbosng device
 
@@ -489,8 +541,17 @@ pass `systemd-analyze verify`, and it was inspected the same way.
 
 On-device checks for the auth gateway (ADR 0001; the nginx site was
 exercised in the container against nginx 1.24 and the gateway's real
-decision code, IPv4 only):
-- `ss -ltnp` shows node listening on 127.0.0.1 only and nginx on :8080.
+decision code, IPv4 only, and is tested on every run against a verify stub,
+criteria 37-40):
+- `ss -lntup` shows node on TCP 127.0.0.1 only and nginx on :8080. On UDP
+  node also holds 0.0.0.0:5353: dnssd2's mDNS responder advertising
+  `_beocreate._tcp` (`node_modules/dnssd2/lib/NetworkInterface.js:211,259`;
+  read from the code, not observed: bonjour did not start in the container).
+  It parses LAN packets in the root process outside the gateway; criterion
+  15 checks TCP only. Whether to keep it or publish through avahi is open
+  (ADR 0001 assumptions).
+- No client frames :8080 from another origin (`X-Frame-Options: SAMEORIGIN`
+  would blank it); none was found in this repo or upstream hbosng.
 - `listen [::]:8080` and `allow ::1` work (the container has no IPv6;
   nginx refuses the whole configuration where IPv6 is unavailable).
 - Policy `all`: a LAN browser on :8080 without a session gets a 302 to
@@ -508,6 +569,11 @@ in the container):
   boot).
 - Releasing the slider changes the panel in under a second (500 ms settle
   plus a restart).
+- `systemctl show -p ExecStart --value touch-timeout.service` prints the
+  drop-in's command line with `$BEO_SCREEN_ARGS` literal (the fixed-mode
+  check keys on it; `systemd-analyze verify` keeps it unexpanded, systemd
+  255), and an override in `/etc/systemd/system/touch-timeout.service.d/`
+  (`systemctl edit`) turns the slider unavailable.
 - The panel's real `max_brightness`: the mapping caps raw at 255 in both
   modes, so a larger maximum never reaches full brightness. Where it is
   *small*, the `-b` floor of 15 becomes a large share of the range: on the

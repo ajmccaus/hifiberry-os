@@ -6,6 +6,8 @@
 //     sources ACR reports are enabled again and the playing one is current.
 // 29. Transport capabilities come from GET /api/players: a player that does
 //     not report `next` gets no next button, also after a pushed state change.
+// 35. A failing ACR volume read or write (api.md: 503 while the control is
+//     unavailable) keeps the last known volume: the UI is never told 0.
 
 const {test, expect} = require("@playwright/test");
 const {BeoEnv, waitFor} = require("./helpers/beo-env");
@@ -67,4 +69,24 @@ test("29. a player without `next` in its capabilities shows no next button", asy
 	await env.acrHook("/__test/player-state", {player: "spotify", state: "Playing", is_active: true});
 	await page.waitForTimeout(1500);
 	await expect(next).toHaveClass(/disabled/);
+});
+
+test("35. a failing ACR volume read or write keeps the last known volume", async () => {
+	env = new BeoEnv();
+	await env.start();
+	const VOLUME = {target: "sound", header: "getVolume"};
+	const isVolume = data => data.target === "sound" && data.header === "systemVolume";
+	const known = (await env.wsSend([VOLUME], isVolume)).content.volume;
+	expect(Math.round(known)).toBe(Math.round((await env.acrState()).volume.percentage));
+
+	expect((await env.acrHook("/__test/volume-failure", {status: 503})).status).toBe(200);
+	// Every systemVolume the UI is sent while ACR fails: a write, then a read.
+	const told = [];
+	await env.wsSend([{target: "sound", header: "setVolume", content: 70}], data => {
+		if (isVolume(data)) told.push(data.content.volume);
+		return false;
+	}, 1500).catch(() => {});
+	told.push((await env.wsSend([VOLUME], isVolume)).content.volume);
+	expect(told.length).toBeGreaterThan(0);
+	for (const volume of told) expect(volume).toBe(known);
 });

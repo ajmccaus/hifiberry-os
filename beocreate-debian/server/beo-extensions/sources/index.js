@@ -258,6 +258,12 @@ function artworkProxyURL(artUrl) {
 	return "acr-artwork/" + artUrl;
 }
 
+function songStreamURL(song) {
+	// ACR's Song names it stream_url (acr-types song.rs, 0.23.6); uri is the
+	// older websocket.md example's name.
+	return (song.stream_url != undefined) ? song.stream_url : song.uri;
+}
+
 function songArtURL(song) {
 	// An ACR song's artwork as the client gets it (through the proxy), or null.
 	var artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
@@ -313,7 +319,7 @@ function translateNowPlayingToMetadata(json) {
 		albumTitle: song.album,
 		artUrl: artUrl,
 		externalArtUrl: null,
-		streamUrl: song.uri,
+		streamUrl: songStreamURL(song),
 		loved: false,
 		loveSupported: false
 	};
@@ -441,7 +447,7 @@ acr.events.on("song_changed", function(event) {
 		albumTitle: song.album,
 		artUrl: artUrl,
 		externalArtUrl: null,
-		streamUrl: song.uri,
+		streamUrl: songStreamURL(song),
 		loved: false,
 		loveSupported: false
 	});
@@ -472,7 +478,7 @@ acr.events.on("song_information_update", function(event) {
 		albumTitle: (update.album != undefined) ? update.album : current.album,
 		artUrl: (artUrl) ? artUrl : current.picture,
 		externalArtUrl: current.externalPicture,
-		streamUrl: (update.uri != undefined) ? update.uri : current.uri,
+		streamUrl: (songStreamURL(update) != undefined) ? songStreamURL(update) : current.uri,
 		loved: current.loved,
 		loveSupported: false
 	});

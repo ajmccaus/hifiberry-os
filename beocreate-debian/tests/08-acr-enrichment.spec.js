@@ -13,9 +13,13 @@
 //     arrive after the song_changed for the next song") are ignored: no frame
 //     the page receives carries them. The barrier after them is a lookup the
 //     mock applies as ACR does (one ACR socket, one Beocreate socket).
+// 34. The stream URL is ACR's Song.stream_url, and an update merges only what it
+//     carries: after a song_changed with artwork and a stream_url, a matching
+//     update with only album and stream_url changes the album and the source's
+//     stream URL and keeps the shown artwork (absent means unchanged).
 
 const {test, expect} = require("@playwright/test");
-const {BeoEnv} = require("./helpers/beo-env");
+const {BeoEnv, waitFor} = require("./helpers/beo-env");
 const {openApp, showNowPlaying} = require("./helpers/ui");
 
 test.describe.configure({mode: "serial"});
@@ -116,4 +120,24 @@ test("19. a song_information_update for a different title/artist is ignored", as
 	// ACR never replaces artwork that belongs to the song: a second lookup is
 	// not applied and publishes nothing.
 	expect(await pushLookup({title: song.title, artist: song.artist, cover_art_url: "/api/imagecache/later.png"})).toBe(false);
+});
+
+test("34. an update keeps the artwork it does not carry and merges the stream URL", async ({page}) => {
+	const song = {title: "Kept Art Song", artist: "Kept Art Artist", album: "Kept Art Album"};
+	const spotifyMetadata = async () => (await env.wsSend([{target: "sources", header: "getSources"}],
+		data => data.target === "sources" && data.header === "sources")).content.sources.spotify.metadata;
+	await openApp(page);
+	await showNowPlaying(page);
+	const res = await env.acrHook("/__test/song", Object.assign({cover_art_url: "/api/imagecache/kept.png",
+		stream_url: "http://radio.example/one"}, song));
+	expect(res.status).toBe(200);
+	await expect(title(page)).toHaveText(song.title, {timeout: 10000});
+	await expect(shownArtwork(page)).toHaveAttribute("src", env.serverURL + "/acr-artwork/api/imagecache/kept.png", {timeout: 10000});
+	expect((await spotifyMetadata()).uri).toBe("http://radio.example/one");
+
+	await pushRawUpdate({title: song.title, artist: song.artist, album: "Enriched Album", stream_url: "http://radio.example/two"});
+	await expect(artistAlbum(page)).toHaveText(song.artist + " — Enriched Album", {timeout: 10000});
+	await expectSettledStrings(page, song.title, song.artist + " — Enriched Album");
+	await expect(shownArtwork(page)).toHaveAttribute("src", env.serverURL + "/acr-artwork/api/imagecache/kept.png");
+	await waitFor(async () => (await spotifyMetadata()).uri === "http://radio.example/two", "the merged stream URL");
 });

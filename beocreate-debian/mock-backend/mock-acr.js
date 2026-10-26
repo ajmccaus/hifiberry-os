@@ -25,6 +25,10 @@ Test-only state manipulation (each broadcasts the matching WS event):
                                     song_information_update only if it changed
   POST /__test/player-state      -> {player, state}   (emits state_changed)
   POST /__test/volume            -> {percentage}      (emits volume_changed)
+  POST /__test/volume-failure    -> {status}: GET /api/volume/state and POST
+                                    /api/volume/set answer that HTTP status
+                                    (api.md: 503 while the control is
+                                    unavailable) until {status: null}
   POST /__test/event             -> broadcast a raw event object as-is
 
 Environment:
@@ -108,7 +112,7 @@ const state = {
 		artist: "Mock Artist",
 		album: "Mock Album",
 		duration: 180,
-		uri: "spotify:track:mock123",
+		stream_url: "spotify:track:mock123", // acr-types Song: stream_url, no uri.
 		cover_art_url: "/api/imagecache/mock.png"
 	},
 	shuffle: false,
@@ -387,9 +391,14 @@ app.get("/api/volume/info", (req, res) => {
 	});
 });
 
+let volumeFailureStatus = null; // Set by /__test/volume-failure.
+
 function volumeUnavailable(req, res, next) {
 	if (!volumeAvailable) {
 		return res.status(404).json({success: false, message: "No volume control available", new_state: null});
+	}
+	if (volumeFailureStatus) {
+		return res.status(volumeFailureStatus).json({success: false, message: "Volume control temporarily unavailable", new_state: null});
 	}
 	next();
 }
@@ -492,6 +501,11 @@ app.post("/__test/volume", (req, res) => {
 	state.volume.percentage = parseFloat((req.body || {}).percentage);
 	emitVolumeChanged();
 	res.json({success: true, new_state: volumeState()});
+});
+
+app.post("/__test/volume-failure", (req, res) => {
+	volumeFailureStatus = (req.body || {}).status || null;
+	res.json({success: true});
 });
 
 app.post("/__test/event", (req, res) => {

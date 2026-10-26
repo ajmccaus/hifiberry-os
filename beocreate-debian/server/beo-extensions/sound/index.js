@@ -233,6 +233,14 @@ var acr = require('../../beocreate_essentials/acr');
 		switch (volumeControl) {
 			case 1: // Talk to ACR.
 				setVolumeViaACR(mapVolume(setVolumeLevel, false), function(newVolume) {
+					if (newVolume == null) {
+						// hbosng port: ACR failed (unreachable, 503): the volume is
+						// unchanged, so the UI gets the last known one, never 0.
+						setVolumeLevel = systemVolume;
+						beo.sendToUI("sound", {header: "systemVolume", content: {volume: systemVolume, volumeControl: volumeControl}});
+						if (callback) callback(systemVolume);
+						return;
+					}
 					reportVolume(newVolume, callback, true);
 				});
 				break;
@@ -255,6 +263,10 @@ var acr = require('../../beocreate_essentials/acr');
 		switch (volumeControl) {
 			case 1: // Talk to ACR.
 				getVolumeViaACR(function(newVolume) {
+					if (newVolume == null) { // hbosng port: ACR failed; keep the last known volume.
+						if (callback) callback(systemVolume);
+						return;
+					}
 					reportVolume(newVolume, callback);
 				});
 				break;

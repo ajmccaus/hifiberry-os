@@ -12,6 +12,10 @@
 //     exceeds max_brightness.
 // 26. Two backlight devices: the extension drives the first one in readdir
 //     order, the one touch-timeout picks (main.c find_backlight_device).
+// 36. touch-timeout running under an admin ExecStart override (`systemctl edit`)
+//     that drops $BEO_SCREEN_ARGS: the slider is reported unavailable, and a
+//     brightness message neither persists, writes the backlight, nor restarts
+//     the daemon.
 
 const {test, expect} = require("@playwright/test");
 const {execFileSync} = require("child_process");
@@ -104,4 +108,23 @@ test("26. two backlights: the first in readdir order is driven", async ({page}) 
 	const raw = Math.round(await sliderValue(page, SLIDER) * 255 / 100);
 	await waitFor(async () => read(first) === raw, first + " brightness to be " + raw);
 	expect(read(other)).toBe(untouched);
+});
+
+test("36. an admin ExecStart override takes the slider out instead of faking a level", async ({page}) => {
+	await startEnv({touchTimeout: "active", touchTimeoutExecStart:
+		"{ path=/usr/bin/touch-timeout ; argv[]=/usr/bin/touch-timeout -b 200 -t 600 ; ignore_errors=no }"});
+	const backlight = env.readBrightness();
+	const isBrightness = data => data.target === "screen" && data.header === "brightness";
+	expect((await env.wsSend([{target: "screen", header: "getBrightness"}], isBrightness)).content.available).toBe(false);
+	await openApp(page);
+	await showExtension(page, "screen");
+	await expect(page.locator("#screen-brightness-slider-wrap")).toHaveClass(/disabled/);
+
+	const mark = env.readSystemctlLog().length;
+	const reply = await env.wsSend([{target: "screen", header: "setBrightness", content: 30}], isBrightness);
+	expect(reply.content.available).toBe(false);
+	await new Promise(r => setTimeout(r, 1500));
+	expect(env.readSystemctlLog().slice(mark).filter(line => STARTS.test(line))).toEqual([]);
+	expect((env.readScreenSettings() || {}).brightness).not.toBe(30);
+	expect(env.readBrightness()).toBe(backlight);
 });

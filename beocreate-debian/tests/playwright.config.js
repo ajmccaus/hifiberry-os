@@ -1,6 +1,7 @@
 // Playwright configuration for the Beocreate-on-Debian port tests.
 // The suite starts its own beo-server + mock ACR + mock backlight per spec
-// file (see helpers/beo-env.js), so tests must not run in parallel.
+// file (see helpers/beo-env.js; 11-nginx-gate also nginx) on fixed ports, so
+// tests must not run in parallel.
 
 const {defineConfig} = require("@playwright/test");
 const fs = require("fs");

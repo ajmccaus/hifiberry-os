@@ -1,17 +1,25 @@
 # Beocreate classic UI on :8080 behind the hifiberry-auth gateway (ADR 0001).
 # Installed as /etc/nginx/sites-available/beocreate (+ sites-enabled symlink).
 # beo-server listens on loopback :8081 only; this block is its sole LAN door.
+# Executable test: tests/11-nginx-gate.spec.js (this file, ports as shipped).
 # - Own verify location, not 00-verify.conf: the gateway sees the synthetic
 #   prefix /api/beocreate (manifest: /etc/hifiberry/auth.d/beocreate.json).
 # - Loopback (the kiosk) is never gated.
 # - Host $http_host, not $host: $host drops :8080 and the WebSocket Origin
 #   check (communication.js) then refuses the browser.
+# - Framing only by the same origin: a cross-site page cannot overlay the
+#   password-free UI (clickjacking).
+# - While beo-server is down (boot, restart, upgrade) the kiosk gets a page that
+#   reloads itself, not nginx's static 502 it cannot leave without a keyboard.
 map $http_upgrade $beocreate_connection { default upgrade; "" close; }
 server {
     listen 8080; listen [::]:8080; server_name _;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Content-Security-Policy "frame-ancestors 'self'" always;
     satisfy any; allow 127.0.0.1; allow ::1; deny all;
     auth_request /_beocreate_auth;
     error_page 401 = @beocreate_signin;
+    error_page 502 503 504 /_beocreate_starting;
     location = /_beocreate_auth {
         internal;
         proxy_pass http://127.0.0.1:1089/_auth/verify;
@@ -22,6 +30,10 @@ server {
     }
     # Policy "all" without a session: send the user to hbos-ui's sign-in on :80.
     location @beocreate_signin { return 302 http://$host/; }
+    location = /_beocreate_starting {
+        internal; default_type text/html;
+        return 502 '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>Beocreate</title><body style="background:#000"></body>';
+    }
     location / {
         proxy_pass http://127.0.0.1:8081;
         proxy_http_version 1.1;

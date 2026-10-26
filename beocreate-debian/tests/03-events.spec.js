@@ -6,6 +6,10 @@
 // 7. song_changed  -> now-playing title/artist update in the DOM.
 // 8. volume_changed -> the client's volume slider follows.
 // 9. state_changed -> the play/pause control flips.
+// 33. The state_changed payload itself is what counts: an event for the
+//     non-active mpd player, pushed as-is (the mock's REST state unchanged, so
+//     no re-read can supply it), sets that source's player state; the player is
+//     identified by the top-level player_name, never source.player_id.
 
 const {test, expect} = require("@playwright/test");
 const {BeoEnv, waitFor} = require("./helpers/beo-env");
@@ -65,4 +69,17 @@ test("9. pushed state_changed event flips the play/pause control", async ({page}
 	res = await env.acrHook("/__test/player-state", {player: "spotify", state: "Playing", is_active: true});
 	expect(res.status).toBe(200);
 	await expect(playButton).toHaveCSS("mask-image", /\/pause\.svg/, {timeout: 10000});
+});
+
+test("33. a pushed state_changed is applied from its own payload", async () => {
+	const getSources = () => env.wsSend([{target: "sources", header: "getSources"}],
+		data => data.target === "sources" && data.header === "sources");
+	expect((await getSources()).content.sources.mpd.playerState).not.toBe("playing");
+	expect((await env.acrState()).players.find(p => p.name === "mpd").state).toBe("Stopped");
+
+	const res = await env.acrHook("/__test/event", {type: "state_changed", state: "playing",
+		player_name: "mpd", player_id: "mpd:localhost:6600", source: {player_name: "mpd", player_id: "mpd:6600"}});
+	expect(res.status).toBe(200);
+	await waitFor(async () => (await getSources()).content.sources.mpd.playerState === "playing",
+		"the mpd source to take the pushed state");
 });

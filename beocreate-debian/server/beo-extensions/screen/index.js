@@ -17,20 +17,26 @@ SOFTWARE.*/
 
 // BEOCREATE SCREEN EXTENSION (hbosng)
 // Brightness slider for an attached display (ADR 0002). The mode is queried
-// per use (once per drag) with `systemctl is-active touch-timeout.service`:
-// - daemon mode ("active"): touch-timeout is running and is the only
-//   backlight writer. This extension never writes sysfs; the settled level
-//   reaches the daemon through the env file (below) plus a try-restart, which
-//   never starts a unit the admin stopped. Playback starting from standby
-//   wakes the daemon with SIGUSR1.
+// per use (once per drag) with `systemctl is-active touch-timeout.service`
+// and, when that says active, `systemctl show -p ExecStart`:
+// - daemon mode ("active", ExecStart carrying $BEO_SCREEN_ARGS): touch-timeout
+//   is running and is the only backlight writer. This extension never writes
+//   sysfs; the settled level reaches the daemon through the env file (below)
+//   plus a try-restart, which never starts a unit the admin stopped.
+// - fixed mode ("active", but an admin ExecStart override replaced the
+//   drop-in's, so the daemon never reads $BEO_SCREEN_ARGS): the daemon owns the
+//   backlight at the admin's -b; the slider is reported unavailable and the
+//   daemon is never restarted for it.
 // - direct mode (anything else, or systemctl fails: no daemon is running, so
 //   there is no second writer): writes the backlight sysfs
 //   (/sys/class/backlight, overridable with BEO_BACKLIGHT_DIR) itself and
 //   restores the level at startup.
-// In both modes the persisted level is mirrored as BEO_SCREEN_ARGS=-b <raw> in
+// In every mode the persisted level is mirrored as BEO_SCREEN_ARGS=-b <raw> in
 // <dataDirectory>/touch-timeout.env (read by the drop-in
 // package/touch-timeout-brightness.conf), so the daemon starts at the slider's
-// level whenever it starts. The UI always shows the persisted level
+// level whenever it starts with the drop-in. Playback starting while no ACR
+// player was playing (any ACR player, also one without a Beocreate source)
+// wakes a running daemon with SIGUSR1. The UI always shows the persisted level
 // (screen.json), never sysfs, which holds the dim level while touch-timeout has
 // the screen dimmed. The backlight device is chosen as the pinned daemon
 // chooses it (main.c find_backlight_device): the first directory entry in
@@ -40,6 +46,7 @@ SOFTWARE.*/
 var fs = require("fs");
 var path = require("path");
 var execFile = require("child_process").execFile;
+var acr = require("../../beocreate_essentials/acr");
 
 var debug = beo.debug;
 var version = require("./package.json").version;
@@ -70,7 +77,7 @@ var MAXIMUM_RAW = 255;
 // no message for this long means the slider has settled.
 var SETTLE_MS = 500;
 var settleTimer = null;
-var dragDaemonMode = null; // Promise of the mode, queried once per drag.
+var dragMode = null; // Promise of the mode, queried once per drag.
 
 function systemctl(args, callback) {
 	execFile(process.env.BEO_SYSTEMCTL || "systemctl", args, function(error, stdout) {
@@ -79,10 +86,15 @@ function systemctl(args, callback) {
 	});
 }
 
-function daemonMode() {
+// Resolves "daemon", "fixed" or "direct" (see the header).
+function screenMode() {
 	return new Promise(function(resolve) {
 		systemctl(["is-active", "touch-timeout.service"], function(error, stdout) {
-			resolve(!error && String(stdout).trim() == "active");
+			if (error || String(stdout).trim() != "active") return resolve("direct");
+			// systemd keeps the command line unexpanded ($BEO_SCREEN_ARGS literal).
+			systemctl(["show", "-p", "ExecStart", "--value", "touch-timeout.service"], function(error, stdout) {
+				resolve((!error && String(stdout).indexOf("$BEO_SCREEN_ARGS") != -1) ? "daemon" : "fixed");
+			});
 		});
 	});
 }
@@ -171,34 +183,42 @@ function setBrightness(percentage) {
 	if (!backlightDirectory) detectBacklight();
 	percentage = clampPercentage(percentage);
 	if (backlightDirectory && percentage != null) {
-		settings.brightness = percentage;
-		if (!dragDaemonMode) dragDaemonMode = daemonMode();
-		dragDaemonMode.then(function(daemon) {
-			// The latest level, not this message's: it may have moved on meanwhile.
-			if (!daemon) writeBacklight(settings.brightness);
+		if (!dragMode) dragMode = screenMode();
+		dragMode.then(function(m) {
+			if (m == "fixed") return; // The slider does not reach the daemon.
+			settings.brightness = percentage; // In message order: the last is the latest.
+			if (m == "direct") writeBacklight(settings.brightness);
 		});
 		clearTimeout(settleTimer);
 		settleTimer = setTimeout(settleBrightness, SETTLE_MS);
 	}
-	sendBrightnessToUI();
+	sendBrightnessToUI(dragMode);
 }
 
 function settleBrightness() {
-	var mode = dragDaemonMode;
-	dragDaemonMode = null;
+	var mode = dragMode;
+	dragMode = null;
 	settleTimer = null;
-	beo.saveSettings("screen", settings, true); // Once per drag, not per tick (SD card).
-	mode.then(function(daemon) {
-		updateDaemon(daemon, true);
+	mode.then(function(m) {
+		if (m == "fixed") return;
+		beo.saveSettings("screen", settings, true); // Once per drag, not per tick (SD card).
+		updateDaemon(m == "daemon", true);
 	});
 }
 
-function sendBrightnessToUI() {
+// mode: the drag's mode promise, if there is one (queried otherwise).
+function sendBrightnessToUI(mode) {
 	if (!backlightDirectory) detectBacklight();
-	beo.sendToUI("screen", {header: "brightness", content: {
-		brightness: settings.brightness,
-		available: (backlightDirectory) ? true : false
-	}});
+	if (!backlightDirectory) {
+		beo.sendToUI("screen", {header: "brightness", content: {brightness: settings.brightness, available: false}});
+		return;
+	}
+	(mode || screenMode()).then(function(m) {
+		beo.sendToUI("screen", {header: "brightness", content: {
+			brightness: settings.brightness,
+			available: m != "fixed"
+		}});
+	});
 }
 
 beo.bus.on('general', function(event) {
@@ -214,9 +234,9 @@ beo.bus.on('general', function(event) {
 				settings.brightness = level;
 				beo.saveSettings("screen", settings, true);
 			}
-			daemonMode().then(function(daemon) {
-				if (!daemon) writeBacklight(settings.brightness);
-				updateDaemon(daemon, false);
+			screenMode().then(function(m) {
+				if (m == "direct") writeBacklight(settings.brightness);
+				updateDaemon(m == "daemon", false);
 			});
 		}
 	}
@@ -228,13 +248,38 @@ beo.bus.on('general', function(event) {
 	}
 });
 
-beo.bus.on("sources", function(event) {
-	// Playback starting from standby wakes a dimmed or blanked screen.
-	if (event.header == "sourcesChanged" &&
-		event.content.fromStandby && event.content.currentSource) {
-		daemonMode().then(function(daemon) {
+// WAKE ON PLAY
+// Playback starting while no ACR player was playing wakes a dimmed or blanked
+// screen. Tracked on ACR's own event stream, so every ACR player counts
+// (AirPlay, Bluetooth, ...), not only those with a Beocreate source.
+var playerStates = {}; // ACR player name -> lower-case state.
+
+function anyPlayerPlaying() {
+	for (var name in playerStates) {
+		if (playerStates[name] == "playing") return true;
+	}
+	return false;
+}
+
+acr.events.on("connected", function() {
+	acr.getPlayers().then(function(json) {
+		if (!json || !json.players) return;
+		playerStates = {};
+		json.players.forEach(function(player) {
+			if (player.name) playerStates[player.name] = String(player.state || "").toLowerCase();
+		});
+	});
+});
+
+acr.events.on("state_changed", function(event) {
+	if (!event.player_name) return;
+	var state = String(event.state || "").toLowerCase();
+	var fromStandby = !anyPlayerPlaying();
+	playerStates[event.player_name] = state;
+	if (state == "playing" && fromStandby) {
+		screenMode().then(function(m) {
 			// Errors are ignored: e.g. the daemon is not running this boot.
-			if (daemon) systemctl(["kill", "--signal=SIGUSR1", "touch-timeout.service"]);
+			if (m != "direct") systemctl(["kill", "--signal=SIGUSR1", "touch-timeout.service"]);
 		});
 	}
 });

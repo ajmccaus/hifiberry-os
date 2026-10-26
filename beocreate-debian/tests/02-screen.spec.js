@@ -5,12 +5,15 @@
 // 12. Brightness floor: the UI can never apply less than raw 15 (touch-timeout's
 //    -b minimum) or persist less than 6 % (ceil(1500 / max_brightness 255)),
 //    and a persisted value below the floor is clamped up at startup.
+// 32. Direct mode never signals or (re)starts touch-timeout: after a drag and a
+//    playback start from standby the systemctl log holds no kill, restart,
+//    try-restart or start.
 
 const {test, expect} = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 const {BeoEnv, waitFor} = require("./helpers/beo-env");
-const {openApp, showExtension, dragSlider, sliderValue} = require("./helpers/ui");
+const {openApp, showExtension, showNowPlaying, dragSlider, sliderValue} = require("./helpers/ui");
 
 test.describe.configure({mode: "serial"});
 
@@ -31,8 +34,8 @@ test("6. brightness slider writes scaled value to the backlight and persists acr
 	await expect(page.locator("#screen-brightness-slider")).toBeVisible();
 
 	// Screenshot of the screen-brightness settings panel.
-	fs.mkdirSync(path.join(__dirname, "screenshots"), {recursive: true});
-	await page.screenshot({path: path.join(__dirname, "screenshots", "screen-brightness.png")});
+	fs.mkdirSync(path.join(__dirname, "test-results", "screenshots"), {recursive: true}); // Untracked (.gitignore).
+	await page.screenshot({path: path.join(__dirname, "test-results", "screenshots", "screen-brightness.png")});
 
 	// Move the slider and check the sysfs write: percent scaled to 0-255.
 	await dragSlider(page, "#screen-brightness-slider", 0.6);
@@ -89,4 +92,26 @@ test("12. brightness has a raw 15 / 6 % floor: UI can neither apply nor persist 
 
 	expect(env.readBrightness()).toBe(FLOOR_RAW);
 	expect(env.readScreenSettings().brightness).toBe(FLOOR_PERCENT);
+});
+
+test("32. direct mode never signals or restarts touch-timeout", async ({page}) => {
+	const mark = env.readSystemctlLog().length;
+	await openApp(page);
+	await showExtension(page, "screen");
+	await dragSlider(page, "#screen-brightness-slider", 0.5);
+	const raw = Math.round(await sliderValue(page, "#screen-brightness-slider") * 255 / 100);
+	await waitFor(async () => env.readBrightness() === raw, "backlight brightness to be " + raw);
+
+	// Playback from standby: spotify starts out Playing, so pause it first.
+	await showNowPlaying(page);
+	const playButton = page.locator("#now-playing .now-playing-transport .symbol.button").nth(1);
+	await env.acrHook("/__test/player-state", {player: "spotify", state: "Paused"});
+	await expect(playButton).toHaveCSS("mask-image", /\/play\.svg/, {timeout: 10000});
+	await env.acrHook("/__test/player-state", {player: "spotify", state: "Playing", is_active: true});
+	await expect(playButton).toHaveCSS("mask-image", /\/pause\.svg/, {timeout: 10000});
+	await new Promise(r => setTimeout(r, 1500));
+
+	const calls = env.readSystemctlLog().slice(mark);
+	expect(calls.length).toBeGreaterThan(0); // The mode was queried ...
+	expect(calls.filter(line => /^(kill|restart|try-restart|start) /.test(line))).toEqual([]); // ... and nothing else.
 });

@@ -4,7 +4,9 @@
 // The server always runs systemctl as mock-backend/mock-systemctl.js and
 // hostnamectl as mock-backend/mock-hostnamectl.js, which log every call;
 // touch-timeout is not running (direct mode) unless the env is created with
-// {touchTimeout: "active"} (daemon mode, ADR 0002).
+// {touchTimeout: "active"} (daemon mode, ADR 0002). By default the server
+// listens on the public port itself (no nginx); {listenPort: 8081} gives the
+// device layout, where nginx owns :8080 (ADR 0001).
 
 const {spawn, spawnSync} = require("child_process");
 const WebSocketClient = require("../../server/node_modules/websocket").client;
@@ -17,7 +19,7 @@ const ROOT = path.resolve(__dirname, "..", "..");            // beocreate-debian
 const SERVER_DIR = path.join(ROOT, "server");
 const MOCK_DIR = path.join(ROOT, "mock-backend");
 
-const SERVER_PORT = 8080;
+const SERVER_PORT = 8080; // The public port (system.json "port").
 const ACR_PORT = 1080;
 
 function httpGet(url) {
@@ -72,8 +74,14 @@ class BeoEnv {
 	// touch-timeout.service (default "inactive"; "active" = daemon mode).
 	// options.systemctlExit: exit code of every mock systemctl call.
 	// options.backlightMax: max_brightness of the mock backlight (default 255).
+	// options.listenPort: the port the server itself listens on (system.json
+	// "listenPort"; default the public port, i.e. no nginx in front).
+	// options.touchTimeoutExecStart: what `systemctl show -p ExecStart` prints
+	// for touch-timeout.service (default: the drop-in's, with $BEO_SCREEN_ARGS).
 	constructor(options = {}) {
 		this.acrEnv = options.acrEnv || {};
+		this.listenPort = options.listenPort || SERVER_PORT;
+		this.touchTimeoutExecStart = options.touchTimeoutExecStart;
 		this.touchTimeout = options.touchTimeout || "inactive";
 		this.systemctlExit = options.systemctlExit;
 		this.backlightMax = options.backlightMax || 255;
@@ -85,7 +93,8 @@ class BeoEnv {
 	}
 
 	get acrURL() { return "http://127.0.0.1:" + ACR_PORT; }
-	get serverURL() { return "http://127.0.0.1:" + SERVER_PORT; }
+	get serverURL() { return "http://127.0.0.1:" + this.listenPort; } // The server itself.
+	get publicURL() { return "http://127.0.0.1:" + SERVER_PORT; }
 	get backlightDeviceDir() { return path.join(this.backlightDir, "mock-backlight"); }
 	get systemctlLog() { return path.join(this.workDir, "systemctl.log"); }
 	get hostnamectlLog() { return path.join(this.workDir, "hostnamectl.log"); }
@@ -104,13 +113,14 @@ class BeoEnv {
 		this.backlightDir = path.join(this.workDir, "backlight");
 		fs.mkdirSync(this.configDir, {recursive: true});
 
-		// System configuration for the Beocreate server under test. The tests
-		// talk to the server directly (no nginx), so it listens on the public port.
+		// System configuration for the Beocreate server under test. Unless
+		// listenPort says otherwise the tests talk to the server directly (no
+		// nginx), so it listens on the public port.
 		fs.writeFileSync(path.join(this.configDir, "system.json"), JSON.stringify({
 			cardType: "Beocreate 4-Channel Amplifier",
 			cardFeatures: ["dsp", "arm7"],
 			port: SERVER_PORT,
-			listenPort: SERVER_PORT,
+			listenPort: this.listenPort,
 			acrAddress: this.acrURL
 		}, null, "\t"));
 
@@ -141,7 +151,7 @@ class BeoEnv {
 			await httpGet(this.serverURL + "/");
 			portTaken = true;
 		} catch (error) {}
-		if (portTaken) throw new Error("Port " + SERVER_PORT + " is already in use; refusing to start beo-server.");
+		if (portTaken) throw new Error("Port " + this.listenPort + " is already in use; refusing to start beo-server.");
 
 		this.serverProcess = spawn("node", [path.join(SERVER_DIR, "beo-system", "beo-server.js"), "v"], {
 			cwd: SERVER_DIR,
@@ -153,6 +163,7 @@ class BeoEnv {
 				MOCK_SYSTEMCTL_LOG: this.systemctlLog,
 				MOCK_TOUCH_TIMEOUT: this.touchTimeout,
 				MOCK_SYSTEMCTL_EXIT: (this.systemctlExit != null) ? String(this.systemctlExit) : "",
+				MOCK_TOUCH_TIMEOUT_EXECSTART: (this.touchTimeoutExecStart != null) ? this.touchTimeoutExecStart : "",
 				BEO_HOSTNAMECTL: path.join(MOCK_DIR, "mock-hostnamectl.js"),
 				MOCK_HOSTNAMECTL_LOG: this.hostnamectlLog
 			}),
@@ -275,7 +286,7 @@ class BeoEnv {
 				});
 				messages.forEach(m => connection.sendUTF(JSON.stringify(m)));
 			});
-			client.connect("ws://127.0.0.1:" + SERVER_PORT + "/", "beocreate");
+			client.connect("ws://127.0.0.1:" + this.listenPort + "/", "beocreate");
 		});
 	}
 
@@ -286,4 +297,4 @@ class BeoEnv {
 	}
 }
 
-module.exports = {BeoEnv, waitFor, httpGet, httpPost};
+module.exports = {BeoEnv, waitFor, httpGet, httpPost, SERVER_PORT};
