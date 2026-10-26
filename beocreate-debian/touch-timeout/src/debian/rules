@@ -1,0 +1,36 @@
+#!/usr/bin/make -f
+# touch-timeout, built from github.com/ajmccaus/touch-timeout at TT_PIN: the
+# same commit as the buildroot package (touch-timeout.mk). Bump both pins and
+# debian/changelog together (ADR 0002).
+
+TT_REPO = https://github.com/ajmccaus/touch-timeout.git
+TT_PIN = 2ad57698f9b219c3fb42e1085bf0e6080a5e9e10
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	@if [ ! -d touch-timeout ]; then \
+		git clone $(TT_REPO) touch-timeout; \
+	fi
+	git -C touch-timeout checkout --detach $(TT_PIN)
+
+override_dh_auto_build:
+	# SYSTEMD_PKG=no: sd_notify is unused (the unit is Type=simple), so no
+	# libsystemd link.
+	$(MAKE) -C touch-timeout SYSTEMD_PKG=no all
+
+override_dh_auto_test:
+	$(MAKE) -C touch-timeout test
+
+override_dh_auto_install:
+	install -D -m 0755 touch-timeout/build/touch-timeout-*-native \
+		debian/touch-timeout/usr/bin/touch-timeout
+	install -D -m 0644 debian/10-only-with-backlight.conf \
+		debian/touch-timeout/usr/lib/systemd/system/touch-timeout.service.d/10-only-with-backlight.conf
+	# The pinned repo's own unit, unmodified; dh_installsystemd installs,
+	# enables and starts it.
+	cp touch-timeout/systemd/touch-timeout.service debian/touch-timeout.service
+
+override_dh_auto_clean:
+	rm -rf touch-timeout debian/touch-timeout.service
