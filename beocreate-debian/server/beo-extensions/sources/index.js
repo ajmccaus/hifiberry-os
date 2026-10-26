@@ -249,6 +249,12 @@ function artworkProxyURL(artUrl) {
 	return "acr-artwork/" + artUrl;
 }
 
+function songArtURL(song) {
+	// An ACR song's artwork as the client gets it (through the proxy), or null.
+	var artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
+	return (artUrl) ? artworkProxyURL(artUrl) : null;
+}
+
 var playerCapabilities = {}; // Last known capabilities per ACR player name (from capabilities_changed events).
 var defaultSupportedCommands = ["play", "pause", "playpause", "stop", "next", "previous"];
 
@@ -277,8 +283,7 @@ function translateNowPlayingToMetadata(json) {
 	// ACR GET /api/now-playing -> audiocontrol2 /api/track/metadata shape.
 	if (!json || !json.player || !json.player.name) return null;
 	song = (json.song) ? json.song : {};
-	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
-	if (artUrl) artUrl = artworkProxyURL(artUrl); // hbosng port: served through this server so remote browsers can load it.
+	artUrl = songArtURL(song); // hbosng port: served through this server so remote browsers can load it.
 	return {
 		playerName: json.player.name,
 		playerState: (json.state || json.player.state || "unknown").toLowerCase(),
@@ -400,8 +405,7 @@ acr.events.on("state_changed", function(event) {
 acr.events.on("song_changed", function(event) {
 	if (!event.player_name) return;
 	song = (event.song) ? event.song : {};
-	artUrl = song.coverart_url || song.artwork_url || song.cover_art_url || null;
-	if (artUrl) artUrl = artworkProxyURL(artUrl); // hbosng port: served through this server so remote browsers can load it.
+	artUrl = songArtURL(song); // hbosng port: served through this server so remote browsers can load it.
 	[extension] = matchAudioControlSourceToExtension(event.player_name);
 	currentState = (extension && allSources[extension]) ? allSources[extension].playerState : "playing";
 	processAudioControlMetadata({
@@ -418,10 +422,35 @@ acr.events.on("song_changed", function(event) {
 	});
 });
 
-acr.events.on("metadata_changed", function(event) {
-	// Metadata updates reuse the song_changed translation.
-	if (!event.player_name || !event.metadata) return;
-	acr.events.emit("song_changed", {player_name: event.player_name, song: event.metadata});
+acr.events.on("song_information_update", function(event) {
+	// Late enrichment of the current song (cover art, lookups). A PARTIAL
+	// update (websocket.md): title/artist only identify the song, every other
+	// field is optional and an absent one means unchanged, never cleared. It
+	// can arrive after the next song_changed, so it is applied only when it
+	// identifies the song held for that player, by ACR's own rule
+	// (apply_song_information): it carries a title or an artist, and each one
+	// it carries matches.
+	if (!event.player_name || !event.song) return;
+	var update = event.song;
+	var [extension] = matchAudioControlSourceToExtension(event.player_name);
+	if (!extension || !allSources[extension]) return;
+	var current = allSources[extension].metadata;
+	if (update.title == undefined && update.artist == undefined) return;
+	if (update.title != undefined && update.title != current.title) return;
+	if (update.artist != undefined && update.artist != current.artist) return;
+	var artUrl = songArtURL(update);
+	processAudioControlMetadata({
+		playerName: event.player_name,
+		playerState: allSources[extension].playerState,
+		title: current.title,
+		artist: current.artist,
+		albumTitle: (update.album != undefined) ? update.album : current.album,
+		artUrl: (artUrl) ? artUrl : current.picture,
+		externalArtUrl: current.externalPicture,
+		streamUrl: (update.uri != undefined) ? update.uri : current.uri,
+		loved: current.loved,
+		loveSupported: false
+	});
 });
 
 acr.events.on("capabilities_changed", function(event) {

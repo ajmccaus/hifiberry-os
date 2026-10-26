@@ -34,7 +34,7 @@ TCP 8086 re-enabled via systemd override). The kiosk shows it with
 | Beocreate need | Old (buildroot) | New (hbosng) |
 |---|---|---|
 | player status/switch | audiocontrol2 REST :81 | ACR REST :1080 `/api/players`, `/api/player/active/send/<cmd>` |
-| metadata push | ac2 HTTP POST to beocreate | ACR WebSocket `/api/events` (state_changed, song_changed, volume) |
+| metadata push | ac2 HTTP POST to beocreate | ACR WebSocket `/api/events` (state_changed, song_changed, song_information_update, volume_changed) |
 | now playing + art | ac2 `/api/track/metadata` | ACR `/api/now-playing`, cover art API |
 | volume | ac2 `/api/volume` + amixer | ACR `/api/volume/info`, `/api/volume/set` |
 | DSP | raw SigmaTCP :8086 + dsptoolkit CLI | same SigmaTCP :8086 (override removes `--disable-tcp`) |
@@ -42,7 +42,8 @@ TCP 8086 re-enabled via systemd override). The kiosk shows it with
 
 API references used to build the mock (fetched from upstream docs):
 ACR REST `doc/api.md`, ACR WebSocket `doc/websocket.md` in
-github.com/hifiberry/acr; `docs/backend-apis.md` on the hbosng branch.
+github.com/hifiberry/acr (event contract checked at 0.23.6, e8c45df);
+`docs/backend-apis.md` on the hbosng branch.
 
 ## Config
 
@@ -141,6 +142,13 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     playing to playing logs exactly one
     `systemctl kill --signal=SIGUSR1 touch-timeout.service`; a second
     push while already playing logs none.
+18. Late enrichment: after a pushed `song_changed` without artwork, a
+    `song_information_update` carrying only `cover_art_url` (title/artist
+    matching) makes the DOM artwork the proxied image; title, artist and
+    album stay as they were.
+19. A `song_information_update` whose title or artist differs from the
+    song shown, or that carries neither, is ignored (checked once a
+    matching update pushed after them has reached the DOM).
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -148,7 +156,7 @@ matching the mock's image.
 
 ## Status
 
-All seventeen Playwright criteria above pass (see "Running the tests").
+All nineteen Playwright criteria above pass (see "Running the tests").
 
 ## Patches applied to the vendored server
 
@@ -196,8 +204,9 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
     external artwork URLs (not on the ACR base) pass through
     unchanged.
   - ACR WebSocket events `state_changed`, `song_changed`,
-    `metadata_changed`, `capabilities_changed` are translated onto the
-    same processing functions (replaces audiocontrol2's HTTP pushes).
+    `song_information_update` (merged, see "Contract notes"),
+    `capabilities_changed` are translated onto the same processing
+    functions (replaces audiocontrol2's HTTP pushes).
   - `processAudioControlMetadata` gained a guard for players whose
     extension isn't installed (the old code defaulted to `bluetooth`,
     which is dropped).
@@ -245,6 +254,21 @@ extension's `slider-wrap` markup/behaviour 1:1.
 
 ## Contract notes / on-device verification items
 
+Documented by ACR (`doc/websocket.md`, `doc/api.md` at 0.23.6) and
+mirrored by the mock:
+
+- **Event identity**: the port reads each event's top-level
+  `player_name`, never `source.*` (`source.player_id` is documented as
+  wrong for every player but MPD; the mock reproduces it).
+- **`metadata_changed` never existed.** Late enrichment (cover art,
+  lookups) arrives as `song_information_update`, a *partial* update:
+  `title`/`artist` only identify the song, and an absent field means
+  unchanged, never cleared. It can arrive after the next `song_changed`,
+  so the port applies it only when it carries a title or an artist and
+  each one it carries matches the song held for that player (ACR's own
+  rule, `apply_song_information`); then a present `album`, `uri` or
+  `cover_art_url` (proxied like `song_changed` artwork) is merged in.
+
 The mock had to *invent* semantics where the upstream docs are silent.
 Each of the following is an assumption baked into the mock (and thus
 into the green test suite) and must be verified against a real hbosng
@@ -269,10 +293,12 @@ device before the port can be called contract-proven:
   must cover the real names for the sources to be *enabled* at all.
 - `/api/now-playing`'s `song` shape is only loosely documented ("title,
   artist, album, etc."). The port reads artwork from `coverart_url`,
-  `artwork_url` or `cover_art_url` (mock uses `artwork_url`, the key
-  documented for the `song_changed` WS event) and title from
-  `title`/`name`. Relative artwork URLs are absolutised against the ACR
-  base URL.
+  `artwork_url` or `cover_art_url` (the mock uses `cover_art_url`, the
+  key documented for both now-playing and the song events) and title from
+  `title`/`name`; relative artwork URLs go through the artwork proxy. The
+  stream URL (mpd's radio/music child-source choice) is read from `uri`,
+  as in websocket.md's `song_changed` example, but ACR's `Song` type
+  (`crates/acr-types/src/song.rs` at 0.23.6) names it `stream_url`.
 - `GET /api/players` does not include supported commands. Transport
   capabilities come from `capabilities_changed` WS events when seen,
   otherwise a default of play/pause/playpause/stop/next/previous is
@@ -293,13 +319,14 @@ its own mock ACR (:1080), mock backlight directory and beo-server (its
 `systemctl` is the logging mock) and tears them down; port 8080/1080 must
 be free. There is no nginx in the suite: the server listens directly on
 :8080 (`listenPort` = `port`).
-The seven spec files cover the seventeen criteria: `01-ui` (1-5),
+The eight spec files cover the nineteen criteria: `01-ui` (1-5),
 `02-screen` (6, 12), `03-events` (7-9, pushed WebSocket events),
 `04-player-naming` (10, mock started with
 `MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
-with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15) and
+with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15),
 `07-touch-timeout` (16-17, mock `systemctl` reporting touch-timeout
-`loaded`). Screenshots of the now-playing screen and the
+`loaded`) and `08-acr-enrichment` (18-19, pushed
+`song_information_update`). Screenshots of the now-playing screen and the
 screen-brightness panel are written to `tests/screenshots/`.
 
 ## Installing on an hbosng device

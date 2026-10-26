@@ -1,15 +1,23 @@
 /* Mock ACR (HiFiBerry Audio Control) server for Beocreate-on-Debian tests.
 
 Implements the subset of the documented ACR REST API (acr doc/api.md) and the
-/api/events WebSocket stream (doc/websocket.md) that the Beocreate classic UI
-port talks to. This mock defines the contract the port is tested against:
-endpoint paths, methods and response shapes follow the upstream documentation.
+/api/events WebSocket stream (doc/websocket.md; event shapes as of acr 0.23.6)
+that the Beocreate classic UI port talks to. This mock defines the contract
+the port is tested against: endpoint paths, methods and response and event
+shapes follow the upstream documentation. Player events carry the documented
+common fields, including ACR's known-wrong source.player_id (clients must
+read the top-level player_id).
 
 Every received API request is recorded and can be inspected by tests via:
   GET  /__test/requests          -> {requests: [{method, path, body, time}]}
   POST /__test/requests/clear    -> clear the recording
 Test-only state manipulation (each broadcasts the matching WS event):
-  POST /__test/song              -> set current song  (emits song_changed)
+  POST /__test/song              -> merge into the current song; a null value
+                                    removes that field (emits song_changed)
+  POST /__test/song-information  -> partial song, broadcast as-is as a
+                                    song_information_update (late enrichment);
+                                    merged into the current song only when it
+                                    identifies it, as ACR does
   POST /__test/player-state      -> {player, state}   (emits state_changed)
   POST /__test/volume            -> {percentage}      (emits volume_changed)
   POST /__test/event             -> broadcast a raw event object as-is
@@ -86,7 +94,7 @@ const state = {
 		album: "Mock Album",
 		duration: 180,
 		uri: "spotify:track:mock123",
-		artwork_url: "/coverart/mock.png"
+		cover_art_url: "/coverart/mock.png"
 	},
 	shuffle: false,
 	loop_mode: "None",
@@ -136,30 +144,37 @@ function broadcast(event) {
 	});
 }
 
-function sourceFor(player) {
+// websocket.md "Event Messages": the top-level player_name/player_id are the
+// event's own source; source.player_id is built as "<name>:6600" for every
+// player (documented ACR bug), and source has no other fields.
+function playerFields(player) {
 	return {
-		player_id: player.id,
 		player_name: player.name,
-		is_active: !!player.is_active
+		player_id: player.id,
+		source: {player_name: player.name, player_id: player.name + ":6600"}
 	};
 }
 
 function emitStateChanged(player) {
-	broadcast({
-		type: "state_changed",
-		state: player.state.toLowerCase(),
-		player_name: player.name,
-		source: sourceFor(player)
-	});
+	broadcast(Object.assign({type: "state_changed", state: player.state.toLowerCase()}, playerFields(player)));
 }
 
 function emitSongChanged(player) {
-	broadcast({
-		type: "song_changed",
-		song: state.song,
-		player_name: player.name,
-		source: sourceFor(player)
-	});
+	broadcast(Object.assign({type: "song_changed", song: state.song}, playerFields(player)));
+}
+
+function emitSongInformationUpdate(player, song) {
+	broadcast(Object.assign({type: "song_information_update", song: song}, playerFields(player)));
+}
+
+// Whether a partial song identifies the current one (ACR's
+// apply_song_information): it must carry a title or an artist, and each one
+// it carries must match; an omitted one is not asserted.
+function identifiesCurrentSong(partial) {
+	if (partial.title == null && partial.artist == null) return false;
+	if (partial.title != null && partial.title !== state.song.title) return false;
+	if (partial.artist != null && partial.artist !== state.song.artist) return false;
+	return true;
 }
 
 function emitVolumeChanged() {
@@ -385,7 +400,8 @@ app.post("/api/volume/mute", volumeUnavailable, (req, res) => {
 
 // COVER ART
 
-app.get("/coverart/mock.png", (req, res) => {
+// Every /coverart/<name> serves the same image (tests tell artwork apart by URL).
+app.get("/coverart/:name", (req, res) => {
 	res.set("Content-Type", "image/png");
 	res.send(COVER_PNG);
 });
@@ -400,9 +416,25 @@ app.post("/__test/requests/clear", (req, res) => {
 app.get("/__test/state", (req, res) => res.json(state));
 
 app.post("/__test/song", (req, res) => {
-	Object.assign(state.song, req.body || {});
+	const body = req.body || {};
+	Object.keys(body).forEach(key => {
+		if (body[key] === null) delete state.song[key];
+		else state.song[key] = body[key];
+	});
 	const p = activePlayer();
 	if (p) emitSongChanged(p);
+	res.json({success: true, song: state.song});
+});
+
+app.post("/__test/song-information", (req, res) => {
+	const partial = req.body || {};
+	if (identifiesCurrentSong(partial)) {
+		Object.keys(partial).forEach(key => {
+			if (key !== "title" && key !== "artist") state.song[key] = partial[key];
+		});
+	}
+	const p = activePlayer();
+	if (p) emitSongInformationUpdate(p, partial);
 	res.json({success: true, song: state.song});
 });
 
