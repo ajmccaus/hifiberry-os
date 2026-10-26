@@ -1,0 +1,12 @@
+{
+  "extraKnownMarketplaces": {
+    "one21tools": {
+      "source": { "source": "github", "repo": "one21labs/one21tools" }
+    }
+  },
+  "enabledPlugins": {
+    "dev-skills@one21tools": true,
+    "engineering-skills@one21tools": true,
+    "pdca-workflow@one21tools": true
+  }
+}
