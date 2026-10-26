@@ -1,0 +1,1 @@
+{ "service": "beocreate", "match_prefix": "/api/beocreate", "default_tier": "ok", "rules": [] }

@@ -20,9 +20,9 @@ TCP 8086 re-enabled via systemd override). The kiosk shows it with
 - `tests/` — Playwright specs driving the real UI in Chromium against
   the server + mocks.
 - `package/` — Debian packaging (`beocreate-classic-ui` .deb), systemd
-  unit, sigmatcp TCP re-enable override, following the conventions of
-  the hbosng `packages/` tree (available in this repo as branch
-  `hbosng`).
+  unit, sigmatcp TCP re-enable override, nginx site and auth-gateway
+  manifest, following the conventions of the hbosng `packages/` tree
+  (available in this repo as branch `hbosng`).
 
 ## Backend mapping (from the portability assessment)
 
@@ -41,7 +41,11 @@ github.com/hifiberry/acr; `docs/backend-apis.md` on the hbosng branch.
 
 ## Config
 
-`/etc/beocreate/system.json`: port 8080 (nginx owns 80 on hbosng).
+`/etc/beocreate/system.json`: `port` 8080 is the public port (advertised
+by bonjour, used in artwork URLs); on the device it belongs to nginx
+(`package/beocreate.nginx`, behind the hifiberry-auth gateway, ADR 0001),
+which proxies to the server on loopback `listenPort` (default 8081). Both
+server listeners (HTTP and the optional HTTPS) bind 127.0.0.1 only.
 Backend URLs configurable via `system.json` keys `acrAddress`
 (default `http://127.0.0.1:1080`) and env overrides for testing.
 `BEO_BACKLIGHT_DIR` overrides `/sys/class/backlight` for the screen
@@ -268,13 +272,21 @@ now-playing screen and the screen-brightness panel are written to
    independent):
    `beocreate-debian/package/build.sh` → `beocreate-classic-ui_<v>_all.deb`
 2. `apt install ./beocreate-classic-ui_<v>_all.deb` (or `dpkg -i` +
-   `apt -f install`). Requires `nodejs >= 20`; recommends
-   `hifiberry-audiocontrol` and `hifiberry-dsp`.
+   `apt -f install`). Requires `nodejs >= 20`, `nginx` and
+   `hifiberry-auth`; recommends `hifiberry-audiocontrol` and
+   `hifiberry-dsp`. The package ships, as conffiles, the nginx site
+   `/etc/nginx/sites-available/beocreate` (enabled by the packaged
+   symlink in `sites-enabled/`) and the gateway manifest
+   `/etc/hifiberry/auth.d/beocreate.json` (prefix `/api/beocreate`, tier
+   `ok`); hifiberry-auth's dpkg trigger on `auth.d` restarts the gateway
+   so it loads the manifest.
 3. postinst installs `/etc/beocreate/system.json` (first install only),
-   enables+starts `beocreate2.service` (port 8080) and try-restarts
-   `sigmatcpserver.service` so the packaged drop-in
+   enables+starts `beocreate2.service` (loopback port 8081) and
+   try-restarts `sigmatcpserver.service` so the packaged drop-in
    (`/usr/lib/systemd/system/sigmatcpserver.service.d/10-beocreate-enable-tcp.conf`,
-   which removes `--disable-tcp`) takes effect. Both the unit and the
+   which removes `--disable-tcp`) takes effect, then runs `nginx -t` and
+   reloads nginx if it is running (postrm `remove` does the same once
+   the site symlink is gone). Both the unit and the
    drop-in live in the package-owned `/usr/lib/systemd/system` tree
    (not `/etc/systemd/system`, which belongs to the admin). The
    maintainer scripts use `deb-systemd-helper`/`deb-systemd-invoke`
@@ -289,6 +301,19 @@ now-playing screen and the screen-brightness panel are written to
 Note: the .deb was built and inspected in the development container
 (`dpkg-deb -I`/`-c` verified); it has not been installed on a real hbosng
 device yet, so postinst/systemd behaviour on-device is untested.
+
+On-device checks for the auth gateway (ADR 0001; the nginx site was
+exercised in the container against nginx 1.24 and the gateway's real
+decision code, IPv4 only):
+- `ss -ltnp` shows node listening on 127.0.0.1 only and nginx on :8080.
+- `listen [::]:8080` and `allow ::1` work (the container has no IPv6;
+  nginx refuses the whole configuration where IPv6 is unavailable).
+- Policy `all`: a LAN browser on :8080 without a session gets a 302 to
+  `http://<host>/`, signs in there, and :8080 then loads.
+- The manifest is picked up after install (`/api/beocreate/*` → `ok`)
+  without restarting hifiberry-auth by hand.
+- The per-request auth subrequest does not visibly slow a phone's page
+  load on a Pi.
 
 ## Deliberately deferred (recoverable from the `create` source repo)
 

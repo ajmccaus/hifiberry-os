@@ -44,7 +44,7 @@ Under policies `unset`/`off`/`risky` (the default), any LAN device or guest can,
 - [verified] `/api/beocreate` is inert on :80: hbos-ui's `location /api/` 404s with `auth_request off` (`hifiberry-webui.nginx:38-42`, hbos-ui@782fa58).
 - [verified] The harness reaches the server on loopback (`tests/playwright.config.js:34`).
 - [verified] The SigmaTCP drop-in binds localhost (`sigmatcp-enable-tcp.conf:9` `--localhost` → hifiberry-dsp@551c195 `sigmatcp.py:1384-1398`): no LAN door. Its overlap with `/api/dsptoolkit` is a separate call.
-- [checkable] New spec: foreign-Origin WS refused, `POST /general-settings/restartProduct` 404, no listener on a non-loopback address; whole suite green — builder; result: runs with the implementing change (code not yet written).
+- [checkable] New spec: foreign-Origin WS refused, `POST /general-settings/restartProduct` 404, no listener on a non-loopback address; whole suite green — builder; result: verified — criteria 13-15 (`tests/06-exposure.spec.js`), whole suite green; 13 and 15 fail on the pre-change server; the shipped `package/beocreate.nginx` (ports remapped, IPv4 only) passes the e2e above against the real server, Chromium included.
 - [unverifiable] On device: `ss -ltnp` shows node on loopback only, IPv6 `listen [::]:8080` + `allow ::1` work (untested: sandbox has no IPv6; mirrors hbos-ui's `listen [::]:80`), LAN :8080 302s under `all` — REOPEN-IF any fails (PORTING.md on-device item).
 - [unverifiable] The per-request auth subrequest (LAN only; upstream exempts static) doesn't visibly slow a phone's load on a Pi — REOPEN-IF it does → `auth_request off` on the static prefixes.
 
