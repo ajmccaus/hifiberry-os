@@ -14,6 +14,8 @@
 # (the public :8080 is an nginx site gated by the auth gateway, ADR 0001; the
 # Node server listens on loopback :8081 only), and the hbosng stack
 # (hifiberry-audiocontrol for ACR on :1080, hifiberry-dsp for sigmatcpserver).
+# hifiberry-audiocontrol >= 0.22: the server's listen-only event subscription
+# is kept alive by that release's pings (PORTING.md, "Contract notes").
 # Recommends touch-timeout (built by ../touch-timeout/build.sh, arch-specific):
 # when installed it owns the backlight and this package's drop-in hands it the
 # slider level from /etc/beocreate/touch-timeout.env (ADR 0002).
@@ -103,7 +105,7 @@ Section: sound
 Priority: optional
 Architecture: $ARCH
 Depends: nodejs (>= 20), nginx, hifiberry-auth
-Recommends: hifiberry-audiocontrol, hifiberry-dsp, touch-timeout
+Recommends: hifiberry-audiocontrol (>= 0.22), hifiberry-dsp, touch-timeout
 Installed-Size: $INSTALLED_SIZE
 Maintainer: HiFiBerry <support@hifiberry.com>
 Description: Beocreate 2 classic user interface for HiFiBerryOS NG

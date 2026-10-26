@@ -277,6 +277,12 @@ mirrored by the mock:
   older daemon — `volumeControlRange` in `/etc/beocreate/sound.json` —
   now maps to a different level (api.md's example: 78 % is -22.8 dB raw,
   -6.3 dB perceptual); the port stores no scale with it.
+- **Keep-alive**: the event subscription only listens. ACR >= 0.22.0
+  pings every client every 30 s and the `websocket` client pongs on its
+  own; an older ACR silently prunes a client that sent nothing for an
+  hour. Hence `Recommends: hifiberry-audiocontrol (>= 0.22)` rather than
+  a timer of our own. `acr.js` reconnects on every close, clean or not
+  (0.22.0 sends close code 1001 on shutdown), and re-reads state.
 
 The mock had to *invent* semantics where the upstream docs are silent.
 Each of the following is an assumption baked into the mock (and thus
@@ -342,7 +348,7 @@ screen-brightness panel are written to `tests/screenshots/`.
    `beocreate-debian/touch-timeout/build.sh` → `touch-timeout_<v>_<arch>.deb`.
 2. `apt install ./beocreate-classic-ui_<v>_all.deb ./touch-timeout_<v>_<arch>.deb`
    (or `dpkg -i` + `apt -f install`). Requires `nodejs >= 20`, `nginx` and
-   `hifiberry-auth`; recommends `hifiberry-audiocontrol`,
+   `hifiberry-auth`; recommends `hifiberry-audiocontrol (>= 0.22)`,
    `hifiberry-dsp` and `touch-timeout`. touch-timeout's own scripts
    (dh_installsystemd) enable and start its unit, which only starts when
    `/sys/class/backlight/*` exists. beocreate-classic-ui ships, as
