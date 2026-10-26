@@ -17,8 +17,13 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	# SYSTEMD_PKG=no: sd_notify is unused (the unit is Type=simple), so no
-	# libsystemd link.
-	$(MAKE) -C touch-timeout SYSTEMD_PKG=no all
+	# libsystemd link. The pinned Makefile hard-assigns CC/CFLAGS/LDFLAGS, so
+	# dpkg-buildflags' hardening (stack protector, FORTIFY, relro) and the -g
+	# dh_dwz needs for the dbgsym package are passed explicitly here, appended
+	# to the Makefile's own required flags (Debian's gcc adds none by default).
+	$(MAKE) -C touch-timeout SYSTEMD_PKG=no all \
+		CFLAGS="$(shell dpkg-buildflags --get CPPFLAGS) $(shell dpkg-buildflags --get CFLAGS) -Wall -Wextra -Wno-unused-parameter -std=c99 -D_GNU_SOURCE -Iinclude" \
+		LDFLAGS="$(shell dpkg-buildflags --get LDFLAGS)"
 
 override_dh_auto_test:
 	$(MAKE) -C touch-timeout test

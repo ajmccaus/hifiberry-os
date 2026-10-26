@@ -210,14 +210,23 @@ beo.bus.on("sources", function(event) {
 // sent to the client therefore carries a path relative to the Beocreate
 // server ("acr-artwork/<path>"), which the untouched client resolves against
 // window.location.hostname + ":" + picturePort. This route streams the image
-// from ACR server-side.
+// from ACR server-side, and only from ACR's image routes (0.23.6: the image
+// cache, a library's images, an artist's image): the proxy runs at Beocreate's
+// gateway tier, so it must not relay ACR's other GET routes.
+var ACR_IMAGE_ROUTE = /^\/api\/(imagecache\/|library\/[^\/]+\/image\/|coverart\/artist\/[^\/]+\/image(\/|$))/;
+
 beo.expressServer.get("/acr-artwork/*", function(req, res) {
-	remotePath = req.originalUrl.replace(/^\/acr-artwork/, ""); // Keeps the query string intact.
-	if (!remotePath || remotePath.charAt(0) != "/") {
+	var remotePath = req.originalUrl.replace(/^\/acr-artwork/, ""); // Keeps the query string intact.
+	var target = null;
+	try {
+		// Resolve dot segments (also percent-encoded) before checking the route.
+		if (remotePath.charAt(0) == "/") target = new URL(acr.getAddress() + remotePath);
+	} catch (error) {}
+	if (!target || !ACR_IMAGE_ROUTE.test(target.pathname)) {
 		res.status(404).send("Not found");
 		return;
 	}
-	acr.fetchRaw(remotePath).then(response => {
+	acr.fetchRaw(target.pathname + target.search).then(response => {
 		if (!response.ok) {
 			res.status(response.status).end();
 			return;
@@ -255,8 +264,17 @@ function songArtURL(song) {
 	return (artUrl) ? artworkProxyURL(artUrl) : null;
 }
 
-var playerCapabilities = {}; // Last known capabilities per ACR player name (from capabilities_changed events).
-var defaultSupportedCommands = ["play", "pause", "playpause", "stop", "next", "previous"];
+var playerCapabilities = {}; // Last known capabilities per ACR player name (GET /api/players, capabilities_changed events).
+var defaultSupportedCommands = ["play", "pause", "playpause", "stop", "next", "previous"]; // Only for a player that reports none.
+
+function rememberCapabilities(playerName, capabilities) {
+	var caps = [];
+	for (var c in capabilities) {
+		caps.push(String(capabilities[c]).toLowerCase());
+	}
+	playerCapabilities[playerName.toLowerCase()] = caps;
+	return caps;
+}
 
 function supportedCommandsForPlayer(playerName) {
 	if (playerName && playerCapabilities[playerName.toLowerCase()]) {
@@ -270,6 +288,9 @@ function translatePlayersToStatus(json) {
 	if (!json || !json.players) return null;
 	players = [];
 	for (var i = 0; i < json.players.length; i++) {
+		if (json.players[i].name && Array.isArray(json.players[i].capabilities)) {
+			rememberCapabilities(json.players[i].name, json.players[i].capabilities);
+		}
 		players.push({
 			name: json.players[i].name,
 			state: (json.players[i].state || "unknown").toLowerCase(),
@@ -339,7 +360,7 @@ function audioControl(operation, extra, callback) {
 		case "stop":
 		case "next":
 		case "previous":
-			// Send to the active player: POST /api/player/active/send/<command>.
+			// Send to the active player: POST /api/player/active/command/<command>.
 			acr.sendActiveCommand(operation.toLowerCase()).then(result => {
 				if (result && result.success != false) {
 					if (callback) callback(true);
@@ -380,10 +401,14 @@ function audioControl(operation, extra, callback) {
 // the client-side code stay unchanged.
 
 acr.events.on("connected", function() {
-	// (Re)connected to the event stream: resynchronise the full state.
+	// (Re)connected to the event stream: resynchronise the full state, starting
+	// with which sources exist (while ACR was unreachable the extensions fell
+	// back to systemd for that, and a disabled source is never activated).
 	if (sourcesRegistered) {
-		audioControlGet("status", function() {
-			audioControlGet("metadata");
+		checkEnabled(null, function() {
+			audioControlGet("status", function() {
+				audioControlGet("metadata");
+			});
 		});
 	}
 });
@@ -455,11 +480,7 @@ acr.events.on("song_information_update", function(event) {
 
 acr.events.on("capabilities_changed", function(event) {
 	if (!event.player_name || !event.capabilities) return;
-	caps = [];
-	for (c in event.capabilities) {
-		caps.push(String(event.capabilities[c]).toLowerCase());
-	}
-	playerCapabilities[event.player_name.toLowerCase()] = caps;
+	var caps = rememberCapabilities(event.player_name, event.capabilities);
 	// Refresh transport controls, preserving the current state of the source.
 	[extension] = matchAudioControlSourceToExtension(event.player_name);
 	currentState = (extension && allSources[extension] && allSources[extension].playerState) ? allSources[extension].playerState : "unknown";
@@ -1061,6 +1082,9 @@ function checkEnabled(queue, callback) {
 				if (callback) callback();
 			}
 		});
+	} else {
+		checkingEnabled = false;
+		if (callback) callback();
 	}
 }
 

@@ -963,9 +963,15 @@ beoCom.on("data", function(data, connection) {
 			}
 			break;
 		case "test":
-		
+
 			break;
-			
+		case "settings":
+			// hbosng port (ADR 0001): the settings channel writes any extension's
+			// file in the data directory, system.json included; no client sends
+			// to it, so it is not reachable from the WebSocket.
+			suppressError = true;
+			break;
+
 		// The target attribute doesn't match any of the special event types, so the data is probably meant for a specific extension.
 		default:
 			eventType = data.target;

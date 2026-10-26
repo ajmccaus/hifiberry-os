@@ -49,14 +49,20 @@ mkdir -p "$STAGING/DEBIAN" \
          "$STAGING/etc/hifiberry/auth.d"
 
 # 1: Server payload -> /opt/beocreate (without node_modules; installed below).
-(cd "$SERVER_DIR" && tar --exclude=node_modules --exclude=package-lock.json -cf - .) | tar -xf - -C "$STAGING/opt/beocreate"
+# package-lock.json is kept (npm ci below pins to it) but the vendored server's
+# own etc/ is dropped: nothing reads /opt/beocreate/etc (the server uses
+# BEO_CONFIG_DIR or /etc/beocreate), and its stale system.json ("port": 80)
+# would contradict the :8080/:8081 layout (ADR 0001).
+(cd "$SERVER_DIR" && tar --exclude=node_modules --exclude=./etc -cf - .) | tar -xf - -C "$STAGING/opt/beocreate"
 
-# 2: Production node modules. --omit=optional keeps out optional native
-# prebuilds (bufferutil, utf-8-validate, ...): this is an Architecture: all
-# package, so no platform-specific binaries may ship. The websocket module
-# falls back to its pure-JS implementation without them.
+# 2: Production node modules, pinned to the tested lockfile (npm ci, not
+# install: it installs exactly server/package-lock.json, the tree run-tests.sh
+# ran against, and fails if package.json and the lock disagree). --omit=optional
+# keeps out optional native prebuilds (bufferutil, utf-8-validate, ...): this is
+# an Architecture: all package, so no platform-specific binaries may ship. The
+# websocket module falls back to its pure-JS implementation without them.
 echo "Installing production node modules..."
-(cd "$STAGING/opt/beocreate" && npm install --omit=dev --omit=optional --no-audit --no-fund --loglevel=error)
+(cd "$STAGING/opt/beocreate" && npm ci --omit=dev --omit=optional --no-audit --no-fund --loglevel=error)
 
 # bufferutil and utf-8-validate are *hard* dependencies of the 'websocket'
 # module (so --omit=optional does not exclude them) and ship prebuilt
@@ -83,6 +89,47 @@ install -m 644 "$MYDIR/touch-timeout-brightness.conf" "$STAGING/usr/lib/systemd/
 # /etc/beocreate by postinst only if no configuration exists yet, so user
 # settings survive upgrades.
 install -m 644 "$MYDIR/system.json" "$STAGING/usr/share/beocreate/system.json.default"
+
+# 4b: Debian copyright file (Policy 12.5). Beocreate itself is MIT; the
+# redistributed npm dependencies keep their own licence files in the tree.
+install -d "$STAGING/usr/share/doc/$PACKAGE"
+cat > "$STAGING/usr/share/doc/$PACKAGE/copyright" <<'EOF'
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: beocreate
+Source: https://github.com/hifiberry/create
+
+Files: *
+Copyright: 2018 Bang & Olufsen A/S
+           2018-2024 HiFiBerry
+License: Expat
+
+Files: node_modules/*
+Copyright: the respective upstream authors
+License: various
+ Redistributed Node.js dependencies. Each module keeps its own licence under
+ /opt/beocreate/node_modules/<module>/ (LICENSE or the license field of its
+ package.json).
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+EOF
+chmod 644 "$STAGING/usr/share/doc/$PACKAGE/copyright"
 
 # 5: nginx site (public :8080 -> loopback :8081) and the auth gateway
 # manifest. Shipped as package files (conffiles), not copied in postinst:
@@ -209,15 +256,30 @@ case "$1" in
             # Fallback: no debhelper tooling on this system.
             systemctl disable beocreate2.service >/dev/null 2>&1 || true
         fi
+        # The package's drop-ins are gone after daemon-reload: try-restart the
+        # affected daemons so sigmatcpserver drops raw SigmaTCP again and
+        # touch-timeout stops running at the slider's -b (both no-ops if absent).
+        restart_dropin_units() {
+            for unit in sigmatcpserver.service touch-timeout.service; do
+                systemctl list-unit-files "$unit" >/dev/null 2>&1 || continue
+                if command -v deb-systemd-invoke >/dev/null 2>&1; then
+                    deb-systemd-invoke try-restart "$unit" >/dev/null || true
+                else
+                    systemctl try-restart "$unit" || true
+                fi
+            done
+        }
+        restart_dropin_units
         # The sites-enabled symlink is gone: drop the :8080 server block.
         reload_nginx
         ;;
     purge)
-        # Remove the runtime configuration/settings written by the server
-        # (system.json copied by postinst, per-extension settings and the
-        # touch-timeout arguments of the screen extension).
-        rm -f /etc/beocreate/*.json /etc/beocreate/touch-timeout.env
-        rmdir /etc/beocreate 2>/dev/null || true
+        # Remove the runtime configuration/settings this package's server wrote.
+        # /etc/beocreate is wholly this package's data directory (system.json
+        # copied by postinst, per-extension settings, touch-timeout.env, and the
+        # beo-extensions/beo-dsp-programs/... subdirectories the server creates),
+        # so remove the tree rather than only its top-level *.json.
+        rm -rf /etc/beocreate
         if command -v deb-systemd-helper >/dev/null 2>&1; then
             deb-systemd-helper purge beocreate2.service >/dev/null || true
             deb-systemd-helper unmask beocreate2.service >/dev/null || true

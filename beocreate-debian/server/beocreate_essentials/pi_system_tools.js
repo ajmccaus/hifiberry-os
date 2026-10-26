@@ -18,9 +18,18 @@ SOFTWARE.*/
 // Raspberry Pi System Tools
 
 // Can perform some basic Raspberry Pi system tasks, such as setting hostname, expanding root file system and power management (shutdown, reboot).
+// hbosng port: user text (the system name) reaches hostnamectl only as one
+// argv element, never through a shell (execFile); the binaries are
+// BEO_HOSTNAMECTL / BEO_SYSTEMCTL (defaults below; the test seams). Shutdown
+// is `systemctl poweroff` (the buildroot shutdown-system script does not exist
+// on Debian); a failed power command exits the process so systemd
+// (Restart=always) brings the UI back instead of leaving it without a listener.
 
 var exec = require('child_process').exec;
+var execFile = require('child_process').execFile;
 var fs = require('fs');
+
+var hostnamectl = process.env.BEO_HOSTNAMECTL || "/usr/bin/hostnamectl";
 
 
 var pi_system_tools = module.exports = {
@@ -35,12 +44,12 @@ var pi_system_tools = module.exports = {
 
 
 function getHostname(callback) {
-	exec("/usr/bin/hostnamectl --pretty", function(error, stdout, stderr) {
+	execFile(hostnamectl, ["--pretty"], function(error, stdout, stderr) {
 		if (error) {
 			callback(null, error);
 		} else {
 			uiName = stdout.replace(/\r?\n|\r/g, ""); // Remove newlines
-			exec("/usr/bin/hostnamectl --static", function(error, stdout, stderr) {
+			execFile(hostnamectl, ["--static"], function(error, stdout, stderr) {
 				if (error) {
 					callback(null, error);
 				} else {
@@ -56,24 +65,28 @@ function getHostname(callback) {
 function setHostname(productName, callback) {
 	getHostname(function(names) { // First get current names so that they can be replaced in /etc/hosts
 		productName = productName.replace(/\r?\n|\r/g, ""); // Remove newlines
-		exec("/usr/bin/hostnamectl set-hostname --pretty \""+productName+"\"", function(error, stdout, stderr) {
-			
+		execFile(hostnamectl, ["set-hostname", "--pretty", productName], function(error, stdout, stderr) {
+
 			if (error) {
 				callback(null, error);
 			} else {
 				n = productName.replace(/ /g, "-"); // Replace spaces with hyphens
 				n = n.replace(/\./g, "-"); // Replace periods with hyphens
 				n = n.replace(/_/g, "-"); // Replace underscores with hyphens
-				n = n.replace(/[^\x00-\x7F]/g, ""); // Remove non-ascii characters
-				n = n.replace(/-+$/g, ""); // Remove hyphens from the end of the name.
 				n = n.toLowerCase(); // Make lower case.
-				
-				exec("/usr/bin/hostnamectl set-hostname --static "+n, function(error, stdout, stderr) {
-					
+				n = n.replace(/[^a-z0-9-]/g, ""); // hbosng port: keep only hostname characters (was: drop non-ASCII).
+				n = n.replace(/^-+|-+$/g, ""); // Remove hyphens from the start and end of the name.
+				if (!n) {
+					callback(null, new Error("The name has no characters usable in a hostname."));
+					return;
+				}
+
+				execFile(hostnamectl, ["set-hostname", "--static", n], function(error, stdout, stderr) {
+
 					if (error) {
 						callback(null, error);
 					} else {
-						exec("/usr/bin/hostnamectl --pretty", function(error, stdout, stderr) {
+						execFile(hostnamectl, ["--pretty"], function(error, stdout, stderr) {
 							
 							if (error) {
 								callback(null, error);
@@ -82,7 +95,7 @@ function setHostname(productName, callback) {
 								if (fs.existsSync("/etc/systemname")) {
 									fs.writeFileSync("/etc/systemname", uiName);
 								}
-								exec("/usr/bin/hostnamectl --static", function(error, stdout, stderr) {
+								execFile(hostnamectl, ["--static"], function(error, stdout, stderr) {
 									if (error) {
 										callback(null, error);
 									} else {
@@ -206,14 +219,18 @@ function expandFilesystem(callback) {
 
 function power(operation, callback) {
 	// Calling a power function will naturally exit the script.
+	// The HTTP server is already closed: if the command fails, exit so systemd
+	// restarts the UI rather than leaving it running without a listener.
+	function exitOnError(error) {
+		if (error) {
+			console.error("Power command '"+operation+"' failed: "+error.message.trim());
+			process.exit(1);
+		}
+	}
 	if (operation == "reboot") {
-		exec("/usr/sbin/reboot", function(error, stdout, stderr) {
-			
-		});
+		execFile("/usr/sbin/reboot", [], exitOnError);
 	}
 	if (operation == "shutdown") {
-		exec("/opt/hifiberry/bin/shutdown-system", function(error, stdout, stderr) {
-			
-		});
+		execFile(process.env.BEO_SYSTEMCTL || "systemctl", ["poweroff"], exitOnError);
 	}
 }

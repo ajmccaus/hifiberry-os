@@ -24,6 +24,14 @@ var wsConnection = null;
 var reconnectTimeout = null;
 var reconnectDelay = 1000;
 var started = false;
+var keepAliveTimer = null;
+// Re-send the subscription periodically so the connection stays alive against
+// an ACR older than 0.22.0, which does not ping and prunes a client that has
+// sent nothing for an hour (websocket.md "Keeping a connection alive"); the
+// server answers with subscription_updated (ignored below). From 0.22.0 the
+// server pings and the websocket client pongs on its own, so this is only a
+// cheap safety net. Overridable for tests with BEO_ACR_KEEPALIVE_MS.
+var KEEPALIVE_MS = parseInt(process.env.BEO_ACR_KEEPALIVE_MS || "", 10) || 240000;
 
 function configure(options = {}) {
 	if (options.address) baseURL = options.address;
@@ -95,7 +103,7 @@ function fetchRaw(path) {
 // PLAYERS
 
 function getPlayers() {
-	// GET /api/players -> {players: [{name, id, state, is_active, has_library, last_seen}]}
+	// GET /api/players -> {players: [{name, id, state, is_active, has_library, last_seen, capabilities, ...}]}
 	return apiGet("/api/players");
 }
 
@@ -110,8 +118,9 @@ function getNowPlaying() {
 }
 
 function sendActiveCommand(command) {
-	// POST /api/player/active/send/<command>
-	return apiPost("/api/player/active/send/" + encodeURIComponent(command));
+	// POST /api/player/active/command/<command> ("active" resolves to the
+	// active player; 0.23.6 serves no /api/player/active/send/ route).
+	return sendPlayerCommand("active", command);
 }
 
 function sendPlayerCommand(playerName, command) {
@@ -164,6 +173,13 @@ function connectEvents() {
 		if (debug) console.log("Connected to ACR event stream at " + wsURL + ".");
 		// Subscribe to events for all players (null = all, per websocket.md).
 		connection.send(JSON.stringify({players: null}));
+		clearInterval(keepAliveTimer);
+		keepAliveTimer = setInterval(function() {
+			if (connection.connected) {
+				try { connection.send(JSON.stringify({players: null})); } catch (error) {}
+			}
+		}, KEEPALIVE_MS);
+		if (keepAliveTimer.unref) keepAliveTimer.unref();
 		events.emit("connected");
 
 		connection.on("message", function(message) {
@@ -182,6 +198,8 @@ function connectEvents() {
 		connection.on("close", function() {
 			connected = false;
 			wsConnection = null;
+			clearInterval(keepAliveTimer);
+			keepAliveTimer = null;
 			if (debug) console.log("ACR event stream closed. Reconnecting...");
 			events.emit("disconnected");
 			scheduleReconnect();
@@ -207,6 +225,8 @@ function scheduleReconnect() {
 function stopEvents() {
 	started = false;
 	clearTimeout(reconnectTimeout);
+	clearInterval(keepAliveTimer);
+	keepAliveTimer = null;
 	if (wsConnection) {
 		try {
 			wsConnection.close();

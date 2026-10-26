@@ -1,13 +1,18 @@
 // Criteria 18-19 of beocreate-debian/PORTING.md: late enrichment of the
-// current song over the ACR WebSocket. `song_information_update` (acr
-// doc/websocket.md at 0.23.6) is a PARTIAL update: title/artist only identify
-// the song it is for, and an absent field means unchanged, never cleared.
-// 18. song_changed without artwork, then an update carrying only
+// current song over the ACR WebSocket. websocket.md (0.23.6) documents
+// `song_information_update` as a PARTIAL update (title/artist only identify
+// the song, an absent field means unchanged); the daemon itself publishes the
+// merged full song, and only when a lookup changed it (api.md "song
+// information": only cover_art_url, liked and metadata merge). The port must
+// handle both.
+// 18. song_changed without artwork, then the documented partial carrying only
 //     cover_art_url (title/artist matching): the DOM artwork becomes the
 //     proxied image while title, artist and album stay as they were.
 // 19. Updates that do not identify the song shown (different title, different
-//     artist, or neither field) are ignored; a matching one sent after them
-//     is the ordering barrier (one ACR socket, one Beocreate socket).
+//     artist, or neither field; late lookups, websocket.md "An update can also
+//     arrive after the song_changed for the next song") are ignored: no frame
+//     the page receives carries them. The barrier after them is a lookup the
+//     mock applies as ACR does (one ACR socket, one Beocreate socket).
 
 const {test, expect} = require("@playwright/test");
 const {BeoEnv} = require("./helpers/beo-env");
@@ -50,8 +55,23 @@ async function pushSongWithoutArtwork(page, song) {
 	await expect(shownArtwork(page)).toHaveCount(0, {timeout: 10000});
 }
 
-async function pushSongInformation(update) {
+// A lookup's answer, applied by the mock as ACR applies it.
+async function pushLookup(update) {
 	const res = await env.acrHook("/__test/song-information", update);
+	expect(res.status).toBe(200);
+	return JSON.parse(res.body).applied;
+}
+
+// A song_information_update as websocket.md documents it, broadcast as-is.
+async function pushRawUpdate(song) {
+	const player = (await env.acrState()).players.find(p => p.is_active);
+	const res = await env.acrHook("/__test/event", {
+		type: "song_information_update",
+		player_name: player.name,
+		player_id: player.id,
+		source: {player_name: player.name, player_id: player.name + ":6600"},
+		song: song
+	});
 	expect(res.status).toBe(200);
 }
 
@@ -61,31 +81,39 @@ test("18. a late song_information_update with only cover_art_url updates the art
 	await showNowPlaying(page);
 	await pushSongWithoutArtwork(page, song);
 
-	await pushSongInformation({title: song.title, artist: song.artist, cover_art_url: "/coverart/late.png"});
+	await pushRawUpdate({title: song.title, artist: song.artist, cover_art_url: "/api/imagecache/late.png"});
 
-	await expect(shownArtwork(page)).toHaveAttribute("src", env.serverURL + "/acr-artwork/coverart/late.png", {timeout: 10000});
+	await expect(shownArtwork(page)).toHaveAttribute("src", env.serverURL + "/acr-artwork/api/imagecache/late.png", {timeout: 10000});
 	// Shown artwork has loaded, so the message that carried it was rendered.
 	await expectSettledStrings(page, song.title, song.artist + " — " + song.album);
 });
 
 test("19. a song_information_update for a different title/artist is ignored", async ({page}) => {
 	const song = {title: "Next Song", artist: "Next Artist", album: "Next Album"};
+	const frames = [];
+	page.on("websocket", ws => ws.on("framereceived", frame => frames.push(String(frame.payload))));
 	await openApp(page);
 	await showNowPlaying(page);
 	await pushSongWithoutArtwork(page, song);
+	const mark = frames.length;
 
 	// Late answers for the previous song (the lookup outlived it), and one
 	// that identifies no song at all.
-	await pushSongInformation({title: "Previous Song", artist: "Previous Artist", album: "Stale Album", cover_art_url: "/coverart/stale-1.png"});
-	await pushSongInformation({title: song.title, artist: "Other Artist", album: "Stale Album", cover_art_url: "/coverart/stale-2.png"});
-	await pushSongInformation({title: "Other Song", artist: song.artist, album: "Stale Album", cover_art_url: "/coverart/stale-3.png"});
-	await pushSongInformation({album: "Stale Album", cover_art_url: "/coverart/stale-4.png"});
-	// Barrier: a matching album-only update, delivered after the four above.
-	await pushSongInformation({title: song.title, artist: song.artist, album: "Enriched Album"});
+	await pushRawUpdate({title: "Previous Song", artist: "Previous Artist", album: "Stale Album", cover_art_url: "/api/imagecache/stale-1.png"});
+	await pushRawUpdate({title: song.title, artist: "Other Artist", album: "Stale Album", cover_art_url: "/api/imagecache/stale-2.png"});
+	await pushRawUpdate({title: "Other Song", artist: song.artist, album: "Stale Album", cover_art_url: "/api/imagecache/stale-3.png"});
+	await pushRawUpdate({album: "Stale Album", cover_art_url: "/api/imagecache/stale-4.png"});
+	// Barrier: a lookup for the song shown, delivered after the four above. The
+	// song has no artwork, so ACR takes it and publishes the merged song.
+	expect(await pushLookup({title: song.title, artist: song.artist, cover_art_url: "/api/imagecache/fresh.png"})).toBe(true);
 
-	await expect(artistAlbum(page)).toHaveText(song.artist + " — Enriched Album", {timeout: 10000});
-	await expectSettledStrings(page, song.title, song.artist + " — Enriched Album");
-	// Vue renders a message's artwork src before a later message's album.
-	await expect(page.locator("#artwork-area-wide img.artwork-img[src*='stale']")).toHaveCount(0);
-	await expect(shownArtwork(page)).toHaveCount(0);
+	await expect(shownArtwork(page)).toHaveAttribute("src", env.serverURL + "/acr-artwork/api/imagecache/fresh.png", {timeout: 10000});
+	await expectSettledStrings(page, song.title, song.artist + " — " + song.album);
+	const received = frames.slice(mark);
+	expect(received.some(frame => frame.includes("fresh.png"))).toBe(true);
+	expect(received.filter(frame => /stale/i.test(frame))).toEqual([]);
+
+	// ACR never replaces artwork that belongs to the song: a second lookup is
+	// not applied and publishes nothing.
+	expect(await pushLookup({title: song.title, artist: song.artist, cover_art_url: "/api/imagecache/later.png"})).toBe(false);
 });

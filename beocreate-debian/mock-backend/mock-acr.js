@@ -14,10 +14,15 @@ Every received API request is recorded and can be inspected by tests via:
 Test-only state manipulation (each broadcasts the matching WS event):
   POST /__test/song              -> merge into the current song; a null value
                                     removes that field (emits song_changed)
-  POST /__test/song-information  -> partial song, broadcast as-is as a
-                                    song_information_update (late enrichment);
-                                    merged into the current song only when it
-                                    identifies it, as ACR does
+  POST /__test/song-information  -> a lookup's partial song (late enrichment),
+                                    applied by ACR's rule (api.md "song
+                                    information", apply_song_information at
+                                    0.23.6): it must carry a title or an artist
+                                    and each one it carries must match; only
+                                    cover_art_url (over absent or station-logo
+                                    art), liked and metadata are merged; the
+                                    merged full song is broadcast as a
+                                    song_information_update only if it changed
   POST /__test/player-state      -> {player, state}   (emits state_changed)
   POST /__test/volume            -> {percentage}      (emits volume_changed)
   POST /__test/event             -> broadcast a raw event object as-is
@@ -26,6 +31,9 @@ Environment:
   MOCK_ACR_PORT             port to listen on (default 1080)
   MOCK_ACR_SPOTIFY_NAME     name of the Spotify-backed player (default
                             "spotify"; real devices may report "librespot")
+  MOCK_ACR_SPOTIFY_CAPABILITIES  comma-separated capabilities that player
+                            reports in GET /api/players (default: the full
+                            transport set)
   MOCK_ACR_VOLUME_AVAILABLE "0" simulates a system without a volume control:
                             /api/volume/info reports available:false and the
                             other /api/volume endpoints fail
@@ -38,6 +46,11 @@ const WebSocket = require("ws");
 const port = parseInt(process.env.MOCK_ACR_PORT || "1080", 10);
 const spotifyPlayerName = process.env.MOCK_ACR_SPOTIFY_NAME || "spotify";
 const volumeAvailable = process.env.MOCK_ACR_VOLUME_AVAILABLE !== "0";
+// GET /api/players carries each player's capabilities (players.rs PlayerInfo,
+// PlayerCapability serialised snake_case).
+const FULL_CAPABILITIES = ["play", "pause", "play_pause", "stop", "next", "previous", "seek", "shuffle", "loop"];
+const spotifyCapabilities = process.env.MOCK_ACR_SPOTIFY_CAPABILITIES ?
+	process.env.MOCK_ACR_SPOTIFY_CAPABILITIES.split(",") : FULL_CAPABILITIES;
 
 // A generated 240x240 two-tone PNG used as mock cover art.
 const COVER_PNG = Buffer.from(
@@ -77,7 +90,8 @@ const state = {
 			state: "Stopped",
 			is_active: false,
 			has_library: true,
-			last_seen: new Date().toISOString()
+			last_seen: new Date().toISOString(),
+			capabilities: FULL_CAPABILITIES
 		},
 		{
 			name: spotifyPlayerName,
@@ -85,7 +99,8 @@ const state = {
 			state: "Playing",
 			is_active: true,
 			has_library: false,
-			last_seen: new Date().toISOString()
+			last_seen: new Date().toISOString(),
+			capabilities: spotifyCapabilities
 		}
 	],
 	song: {
@@ -94,7 +109,7 @@ const state = {
 		album: "Mock Album",
 		duration: 180,
 		uri: "spotify:track:mock123",
-		cover_art_url: "/coverart/mock.png"
+		cover_art_url: "/api/imagecache/mock.png"
 	},
 	shuffle: false,
 	loop_mode: "None",
@@ -176,13 +191,39 @@ function emitSongInformationUpdate(player, song) {
 }
 
 // Whether a partial song identifies the current one (ACR's
-// apply_song_information): it must carry a title or an artist, and each one
-// it carries must match; an omitted one is not asserted.
+// apply_song_information): each title/artist it carries must match; an
+// omitted one is not asserted.
 function identifiesCurrentSong(partial) {
-	if (partial.title == null && partial.artist == null) return false;
 	if (partial.title != null && partial.title !== state.song.title) return false;
 	if (partial.artist != null && partial.artist !== state.song.artist) return false;
 	return true;
+}
+
+// ACR merges only these, and artwork belonging to the song is never replaced:
+// only absent art or a station logo (song.rs cover_art_is_replaceable).
+// Returns whether the stored song changed.
+function mergeSongInformation(partial) {
+	const song = state.song;
+	const metadata = song.metadata || {};
+	let changed = false;
+	const replaceable = song.cover_art_url == null || metadata.cover_art_source === "station_logo";
+	if (partial.cover_art_url != null && partial.cover_art_url !== song.cover_art_url && replaceable) {
+		song.cover_art_url = partial.cover_art_url;
+		metadata.cover_art_source = "enrichment";
+		changed = true;
+	}
+	if (partial.liked != null && partial.liked !== song.liked) {
+		song.liked = partial.liked;
+		changed = true;
+	}
+	Object.keys(partial.metadata || {}).forEach(key => {
+		if (JSON.stringify(metadata[key]) !== JSON.stringify(partial.metadata[key])) {
+			metadata[key] = partial.metadata[key];
+			changed = true;
+		}
+	});
+	song.metadata = metadata;
+	return changed;
 }
 
 function emitVolumeChanged() {
@@ -294,15 +335,6 @@ app.post("/api/players/stop-all", (req, res) => {
 	res.json({success: true, message: "Stopped or paused " + count + " players"});
 });
 
-app.post("/api/player/active/send/:command", (req, res) => {
-	const player = activePlayer();
-	if (!player) {
-		return res.status(400).json({success: false, message: "No active player"});
-	}
-	applyCommand(player, req.params.command);
-	res.json({success: true, message: "Command '" + req.params.command + "' sent successfully to active player"});
-});
-
 app.post("/api/player/:name/command/:command", (req, res) => {
 	const player = findPlayer(req.params.name);
 	if (!player) {
@@ -407,8 +439,8 @@ app.post("/api/volume/mute", volumeUnavailable, (req, res) => {
 
 // COVER ART
 
-// Every /coverart/<name> serves the same image (tests tell artwork apart by URL).
-app.get("/coverart/:name", (req, res) => {
+// Every image-cache path serves the same image (tests tell artwork apart by URL).
+app.get("/api/imagecache/*", (req, res) => {
 	res.set("Content-Type", "image/png");
 	res.send(COVER_PNG);
 });
@@ -435,14 +467,13 @@ app.post("/__test/song", (req, res) => {
 
 app.post("/__test/song-information", (req, res) => {
 	const partial = req.body || {};
-	if (identifiesCurrentSong(partial)) {
-		Object.keys(partial).forEach(key => {
-			if (key !== "title" && key !== "artist") state.song[key] = partial[key];
-		});
+	if (partial.title == null && partial.artist == null) {
+		return res.status(400).json({success: false, message: "Song information needs a title or an artist"});
 	}
+	const applied = identifiesCurrentSong(partial) && mergeSongInformation(partial);
 	const p = activePlayer();
-	if (p) emitSongInformationUpdate(p, partial);
-	res.json({success: true, song: state.song});
+	if (applied && p) emitSongInformationUpdate(p, state.song);
+	res.json({success: true, applied: applied});
 });
 
 app.post("/__test/player-state", (req, res) => {

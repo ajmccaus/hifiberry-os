@@ -18,6 +18,7 @@ SOFTWARE.*/
 // BEOCREATE GENERAL SETTINGS
 
 
+	var debug = beo.debug; // hbosng port: was undefined, so `if (debug)` in the reboot/shutdown handlers threw before emitting the request.
 	var version = require("./package.json").version;
 	
 	beo.bus.on('general', function(event) {

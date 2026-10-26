@@ -1,7 +1,7 @@
 // Criteria 16-17 of beocreate-debian/PORTING.md (ADR 0002), in daemon mode:
-// the mock systemctl reports touch-timeout.service "loaded".
+// the mock systemctl reports touch-timeout.service "active".
 // 16. The slider never writes the backlight; each settled drag writes the
-//     mapped `-b` to touch-timeout.env and restarts the daemon exactly once;
+//     mapped `-b` to touch-timeout.env and try-restarts the daemon exactly once;
 //     a drag to 0 gives `-b 15`; a dimmed backlight file does not change the
 //     level the UI shows; at startup a missing env file is rewritten from
 //     screen.json with one restart, an unchanged one causes none.
@@ -15,14 +15,14 @@ const {openApp, showExtension, showNowPlaying, dragSlider, sliderValue} = requir
 
 test.describe.configure({mode: "serial"});
 
-const RESTART = "restart touch-timeout.service";
+const RESTART = "try-restart touch-timeout.service";
 const WAKE = "kill --signal=SIGUSR1 touch-timeout.service";
 const SLIDER = "#screen-brightness-slider";
 
 let env;
 
 test.beforeAll(async () => {
-	env = new BeoEnv({touchTimeout: "loaded"});
+	env = new BeoEnv({touchTimeout: "active"});
 	await env.start();
 });
 

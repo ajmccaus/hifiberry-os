@@ -54,13 +54,13 @@ test("2. UI loads without fatal JS errors and shows mock now-playing metadata", 
 	// Cover art: the DOM must point at the Beocreate server's artwork proxy,
 	// not at the localhost-only ACR address (remote browsers can't reach it).
 	const artworkImg = page.locator("#artwork-area-wide .artwork-wrap:visible img.artwork-img");
-	await expect(artworkImg).toHaveAttribute("src", env.serverURL + "/acr-artwork/coverart/mock.png", {timeout: 15000});
+	await expect(artworkImg).toHaveAttribute("src", env.serverURL + "/acr-artwork/api/imagecache/mock.png", {timeout: 15000});
 
 	// Fetching that URL through the Beocreate server returns the mock's image.
-	const proxied = await request.get(env.serverURL + "/acr-artwork/coverart/mock.png");
+	const proxied = await request.get(env.serverURL + "/acr-artwork/api/imagecache/mock.png");
 	expect(proxied.status()).toBe(200);
 	expect(proxied.headers()["content-type"]).toContain("image/png");
-	const direct = await request.get(env.acrURL + "/coverart/mock.png");
+	const direct = await request.get(env.acrURL + "/api/imagecache/mock.png");
 	expect(Buffer.compare(await proxied.body(), await direct.body())).toBe(0);
 
 	expect(errors, "fatal page errors: " + errors.join("; ")).toEqual([]);
@@ -76,8 +76,9 @@ test("3. play/pause in the UI reaches the mock ACR as a player command", async (
 
 	const request = await waitFor(async () => {
 		const requests = await env.acrRequests();
-		// The UI's play/pause button maps to exactly 'playpause'.
-		return requests.find(r => r.method === "POST" && r.path === "/api/player/active/send/playpause");
+		// The UI's play/pause button maps to exactly 'playpause', sent to the
+		// active player (ACR 0.23.6 serves no /api/player/active/send/ route).
+		return requests.find(r => r.method === "POST" && r.path === "/api/player/active/command/playpause");
 	}, "transport command at mock ACR");
 	expect(request).toBeTruthy();
 

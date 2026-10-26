@@ -27,7 +27,7 @@ Owner, asked "Beocreate's commands all travel over one WebSocket, so the passwor
 One change, before the port's first device install.
 
 ## Accepted risk (owner's, informed)
-Under policies `unset`/`off`/`risky` (the default), any LAN device or guest can, with no password, reboot/shut down, rename, rewrite the DSP and change every Beocreate setting. Only `all` gates it. Upstream classes reboot/hostname `risky` (`security-model.md:78-79`); this deviates on purpose.
+Under policies `unset`/`off`/`risky` (the default), any LAN device or guest can, with no password, reboot/shut down, rename, rewrite the DSP and change every Beocreate setting — all as root (`beocreate2.service` has no `User=`), and a DNS-rebinding web page reaches the same WS (Origin == Host after rebind). What it is NOT is arbitrary code execution: the WS reaches no command built from its text — rename/DSP pass user input to `hostnamectl`/`dsptoolkit` as argv not a shell, and the settings channel (which writes `system.json`, whose `runAtStart` is `exec`'d at boot) is inert over the WS. The surface is those device operations, bounded. Only `all` gates it. Upstream classes reboot/hostname `risky` (`security-model.md:78-79`); this deviates on purpose.
 
 ## Justification
 - Closes the bypass at low effort; no URL moves (kiosk, bookmarks, bonjour, art stay on :8080).

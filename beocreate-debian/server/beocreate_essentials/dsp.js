@@ -21,6 +21,7 @@ SOFTWARE.*/
 var net = require("net"); // for communication over TCP
 var fs = require('fs'); // for filesystem access
 var exec = require('child_process').exec;
+var execFile = require('child_process').execFile;
 
 
 var dictionary = {}; // Stores the DSP parameter addresses.
@@ -532,7 +533,7 @@ function flashEEPROM(filePath, callback) {
 	flashCallback = callback;
 	//EEPROMRequest = new Buffer(createSigmaEEPROMRequest(filePath))
 	//dspClient.write(EEPROMRequest);
-	exec("dsptoolkit --timeout 60 install-profile "+filePath, function(error, stdout, stderr) {
+	execFile("dsptoolkit", ["--timeout", "60", "install-profile", filePath], function(error, stdout, stderr) { // hbosng port: path as argv, no shell.
 		if (error) {
 			flashCallback(null, error);
 		} else {
