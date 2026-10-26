@@ -268,18 +268,21 @@ mirrored by the mock:
   each one it carries matches the song held for that player (ACR's own
   rule, `apply_song_information`); then a present `album`, `uri` or
   `cover_art_url` (proxied like `song_changed` artwork) is merged in.
+- **`volume_changed`** is `{type, control_name, display_name, percentage,
+  decibels?, raw_value?}` with no player source; the sound extension
+  reads `percentage`, which is in the domain of the REST volume
+  endpoints, so the event and REST paths agree. Since ACR 0.21.0 that
+  domain defaults to perceptual for controls with usable dB data
+  (before: the raw mixer position), so a percentage stored against an
+  older daemon — `volumeControlRange` in `/etc/beocreate/sound.json` —
+  now maps to a different level (api.md's example: 78 % is -22.8 dB raw,
+  -6.3 dB perceptual); the port stores no scale with it.
 
 The mock had to *invent* semantics where the upstream docs are silent.
 Each of the following is an assumption baked into the mock (and thus
 into the green test suite) and must be verified against a real hbosng
 device before the port can be called contract-proven:
 
-- **`volume_changed` event shape**: the upstream `websocket.md` does
-  **not** document volume events. The mock (and the sound extension)
-  assume `{"type": "volume_changed", "percentage": ...}`; the sound
-  extension also accepts `volume.percentage`/`current_state.percentage`
-  and always re-reads `/api/volume/state` on demand, so a missing or
-  different volume event only costs push updates, not correctness.
 - **`play` command activates a player and pauses the others**: the
   mock's `POST /api/player/<name>/command/play` marks that player
   active and pauses all other playing players. Whether real ACR

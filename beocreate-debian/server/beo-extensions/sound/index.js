@@ -387,12 +387,10 @@ var acr = require('../../beocreate_essentials/acr');
 	}
 
 	// Volume changes made elsewhere (hardware buttons, other UIs) arrive on
-	// the shared ACR event stream.
+	// the shared ACR event stream (websocket.md "volume_changed"); its
+	// percentage is in the same domain as the REST volume endpoints.
 	acr.events.on("volume_changed", function(event) {
-		percentage = undefined;
-		if (event.percentage != undefined) percentage = event.percentage;
-		else if (event.volume && event.volume.percentage != undefined) percentage = event.volume.percentage;
-		else if (event.current_state && event.current_state.percentage != undefined) percentage = event.current_state.percentage;
+		percentage = event.percentage;
 		if (percentage != undefined) {
 			if (debug >= 2) console.log("Volume received from ACR event stream: "+percentage+" %.");
 			if (!acrVolumeAvailable) {

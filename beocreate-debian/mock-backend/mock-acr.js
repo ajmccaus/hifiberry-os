@@ -102,6 +102,14 @@ const state = {
 	volume: {percentage: 42.0}
 };
 
+// No volume_scale: a daemon without the field reports raw-scale percentages
+// (api.md "Volume scales"), which matches the mock's linear decibel mapping.
+const VOLUME_CONTROL = {
+	internal_name: "hw:0,0",
+	display_name: "Mock Master Volume",
+	decibel_range: {min_db: -60.0, max_db: 0.0}
+};
+
 function volumeState() {
 	const pct = state.volume.percentage;
 	return {
@@ -178,10 +186,13 @@ function identifiesCurrentSong(partial) {
 }
 
 function emitVolumeChanged() {
-	// NOTE: volume events are not covered by the upstream websocket.md;
-	// this shape is this project's assumption (documented in PORTING.md).
+	// websocket.md "volume_changed": system-wide, no player source.
 	if (!volumeAvailable) return;
-	broadcast(Object.assign({type: "volume_changed"}, volumeState()));
+	broadcast(Object.assign({
+		type: "volume_changed",
+		control_name: VOLUME_CONTROL.internal_name,
+		display_name: VOLUME_CONTROL.display_name
+	}, volumeState(), {source: {player_name: null, player_id: "system:6600"}}));
 }
 
 // PLAYER STATE TRANSITIONS
@@ -338,11 +349,7 @@ app.get("/api/volume/info", (req, res) => {
 	}
 	res.json({
 		available: true,
-		control_info: {
-			internal_name: "hw:0,0",
-			display_name: "Mock Master Volume",
-			decibel_range: {min_db: -60.0, max_db: 0.0}
-		},
+		control_info: VOLUME_CONTROL,
 		current_state: volumeState(),
 		supports_change_monitoring: true
 	});
