@@ -1,0 +1,7 @@
+{
+  "name": "beocreate-extension-screen",
+  "version": "1.0.0",
+  "description": "Screen brightness control for the Beocreate classic UI on HiFiBerryOS NG",
+  "license": "MIT",
+  "beocreate": {}
+}

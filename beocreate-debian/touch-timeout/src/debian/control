@@ -1,0 +1,20 @@
+Source: touch-timeout
+Section: misc
+Priority: optional
+Maintainer: HiFiBerry <support@hifiberry.com>
+Build-Depends: debhelper-compat (= 13),
+               git,
+               ca-certificates
+Standards-Version: 4.5.1
+Homepage: https://github.com/ajmccaus/touch-timeout
+Vcs-Git: https://github.com/ajmccaus/touch-timeout.git
+
+Package: touch-timeout
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Touchscreen backlight dimming and timeout daemon
+ touch-timeout dims the display backlight after a period without touch
+ input and switches it off after a longer one; a touch, or SIGUSR1,
+ restores full brightness (-b). Backlight and touchscreen are
+ auto-detected. The service only starts when /sys/class/backlight has
+ an entry.

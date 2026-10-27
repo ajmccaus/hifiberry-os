@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg width="100%" height="100%" viewBox="0 0 150 150" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"><rect id="Artboard1" x="25" y="25" width="100" height="100" style="fill:none;"/><g id="Layer-1" serif:id="Layer 1"><path d="M75,44.987c16.576,0 30.012,13.437 30.012,30.012c0,16.575 -13.436,30.014 -30.012,30.014c-16.573,0 -30.012,-13.439 -30.012,-30.014c0,-16.513 13.339,-29.911 30.012,-30.012Zm8.903,16.535l0,-2.022l-9.43,0c-6.14,0.036 -12.135,3.405 -14.906,8.773c-2.793,5.41 -1.749,12.338 2.309,16.767l-2.072,4.454l1.835,0.851l1.778,-3.821l0.089,0.074c2.957,2.428 6.727,3.786 10.55,3.897c0.208,0.004 0.208,0.004 0.418,0.005l17.007,0l-13.482,-28.978l5.904,0Zm-8.498,0c-0.208,0.005 -0.391,0.121 -0.492,0.296c-3.925,7.406 -7.072,15.197 -10.607,22.795c2.706,2.495 6.44,3.842 10.169,3.864l13.833,0c-4.134,-8.886 -7.823,-17.994 -12.404,-26.659c-0.088,-0.153 -0.238,-0.262 -0.499,-0.296Zm-2.707,0.1c-6.835,0.817 -12.913,6.682 -12.745,13.681c0.067,2.79 1.11,5.514 2.859,7.72l9.962,-21.41l-0.076,0.009Z"/><circle id="ring-1" cx="75" cy="75" r="28.5" style="fill:none;stroke:#000;stroke-width:1px;"/><circle id="ring-2" cx="75" cy="75" r="28.5" style="fill:none;stroke:#000;stroke-width:1px;"/><circle id="ring-3" cx="75" cy="75" r="28.5" style="fill:none;stroke:#000;stroke-width:1px;"/></g>
+
+		<animate attributeName="r"
+			xlink:href="#ring-1"
+		    from="28.5"
+		    to="72"
+		    begin="0s"
+		    dur="2.4s"
+		    repeatCount="indefinite"
+		/>
+		
+		<animate attributeName="r"
+			xlink:href="#ring-2"
+		    from="28.5"
+		    to="72"
+		    begin="0.8s"
+		    dur="2.4s"
+		    repeatCount="indefinite"
+		/>
+		
+		<animate attributeName="r"
+			xlink:href="#ring-3"
+		    from="28.5"
+		    to="72"
+		    begin="1.6s"
+		    dur="2.4s"
+		    repeatCount="indefinite"
+		/>
+		
+		<animate attributeName="opacity"
+			xlink:href="#ring-1"
+			from="1"
+			to="0"
+			begin="0s"
+			dur="2.4s"
+			repeatCount="indefinite"
+		/>
+		
+		<animate attributeName="opacity"
+			xlink:href="#ring-2"
+			from="1"
+			to="0"
+			begin="0.8s"
+			dur="2.4s"
+			repeatCount="indefinite"
+		/>
+		
+		<animate attributeName="opacity"
+			xlink:href="#ring-3"
+			from="1"
+			to="0"
+			begin="1.6s"
+			dur="2.4s"
+			repeatCount="indefinite"
+		/>
+</svg>

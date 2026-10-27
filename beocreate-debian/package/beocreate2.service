@@ -1,0 +1,17 @@
+[Unit]
+Description=Beocreate 2 classic UI server
+# audiocontrol.service is the ACR unit name on hbosng; acr.service is kept as
+# an alias in case the unit is renamed. Missing After= units are ignored.
+After=network.target audiocontrol.service acr.service sigmatcpserver.service
+Wants=audiocontrol.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/beocreate/beo-system/beo-server.js d
+WorkingDirectory=/opt/beocreate
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

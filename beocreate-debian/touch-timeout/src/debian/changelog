@@ -1,0 +1,7 @@
+touch-timeout (0.8.0+git20251227.2ad5769) stable; urgency=medium
+
+  * Initial package: ajmccaus/touch-timeout at 2ad5769 (v0.8.0, plus five
+    commits), the buildroot package's pin. Ships the pinned unit, enabled,
+    with a drop-in that starts it only when a backlight exists.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 26 Oct 2026 12:00:00 +0000

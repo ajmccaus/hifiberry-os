@@ -1,0 +1,7 @@
+node_modules/
+test-results/
+package/build/
+package/*.deb
+touch-timeout/*.deb
+touch-timeout/*.changes
+touch-timeout/*.buildinfo

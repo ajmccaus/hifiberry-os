@@ -1,0 +1,6 @@
+{
+	"cardType": "Beocreate 4-Channel Amplifier",
+	"cardFeatures": ["dsp", "arm7"],
+	"port": 8080,
+	"acrAddress": "http://127.0.0.1:1080"
+}
