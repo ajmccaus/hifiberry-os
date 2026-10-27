@@ -4,7 +4,7 @@ Goal: run the classic Beocreate interface as the UI for HiFiBerryOS NG
 (Debian 13 / hbosng), talking to the new backends: ACR (audio control,
 port 1080), the Configurator (port 1081), and sigmatcpserver (DSP,
 TCP 8086 re-enabled via systemd override). The kiosk shows it with
-`kiosk-mode.sh setup --url=http://localhost:8080`.
+`kiosk-mode.sh setup --url=http://localhost:8080 --scale=1` (install step 4).
 
 ## Layout
 
@@ -573,7 +573,12 @@ upgrade, remove, reinstall; purge).
    pure-JS fallbacks) are pruned; the build fails if any `.node` binary
    remains. It ships `/usr/share/doc/<pkg>/copyright` (Policy 12.5) and
    `DEBIAN/md5sums` (`dpkg --verify`).
-4. Point the kiosk at it: `kiosk-mode.sh setup --url=http://localhost:8080`.
+4. Point the kiosk at it at the buildroot look (800x480 CSS px; upstream's
+   default 1.3 zoom gives Beocreate's compact layout):
+   `kiosk-mode.sh setup --url=http://localhost:8080 --scale=1`. The script
+   appends `?dark` to the URL (`kiosk-mode.sh:79`); no Beocreate client code reads
+   the query string,
+   so the kiosk shows the light appearance (device check).
 
 Note: the .deb was built and inspected in the development container
 (`dpkg-deb -I`/`-c` verified); it has not been installed on a real hbosng

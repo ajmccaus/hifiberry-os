@@ -6,7 +6,8 @@ Two product lines in one repo:
   (.mk, Config.in, systemd units, shell), `configs/override.conf`, top-level build scripts.
   Build: `./get-buildroot && ./build-config 4 && ./compile 4` (hours; build host only).
 - **Beocreate on Debian / hbosng** (direction): `beocreate-debian/` — Node 20 server, mock ACR,
-  Playwright suite, .deb build. Its `PORTING.md` owns the port's contract and patch list.
+  Playwright suite, .deb build. Its `PORTING.md` owns the port's contract and patch list;
+  its `SPEC.md` owns the requirements (R1-R23) and design for the remaining work.
 Upstream: HiFiBerry `main` (Debian NG) is mirrored as branch `hbosng`; the old buildroot line is
 upstream `hbos-buildroot`. `roadmap.md` owns plan and next steps.
 
