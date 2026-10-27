@@ -3,8 +3,8 @@
 ## Platform facts
 
 - Upstream `hifiberry/hifiberry-os` (buildroot, 32-bit and 64-bit) is unmaintained: last real development late 2023, EOL notice in the upstream README July 2025, issue tracker disabled. No active community forks.
-- All upstream development is on the `hbosng` branch (formerly referenced as `hbfng`): Debian 13 (Trixie) on Raspberry Pi OS Lite, apt packages, PipeWire, Rust "ACR" audio-control backend, new Vue 3 web UI (`hifiberry/hbos-ui`). Active as of July 2026. 64-bit only (Pi 3/4/5). No stable public release yet (upstream TODO still has PipeWire start ordering and Bluetooth-via-PipeWire open).
-- This fork carries a mirror of upstream `hbosng` as its own `hbosng` branch (refresh: `git fetch https://github.com/hifiberry/hifiberry-os hbosng && git push origin FETCH_HEAD:hbosng`).
+- All upstream development is on upstream `main` (the Debian line, formerly the `hbosng` branch; the buildroot line is now upstream `hbos-buildroot`): Debian 13 (Trixie) on Raspberry Pi OS Lite, apt packages, PipeWire, Rust "ACR" audio-control backend, new Vue 3 web UI (`hifiberry/hbos-ui`). Active as of July 2026. 64-bit only (Pi 3/4/5). No stable public release yet (upstream TODO still has PipeWire start ordering and Bluetooth-via-PipeWire open).
+- This fork carries a mirror of upstream `main` as its own `hbosng` branch (refresh: `git fetch https://github.com/hifiberry/hifiberry-os main && git push origin FETCH_HEAD:hbosng`).
 - hbosng has a kiosk mode (getty → cage → cog — the same WPE browser stack as buildroot) showing the new Vue UI. It does not include the Beocreate interface. `kiosk-mode.sh setup` accepts `--url=` , so pointing the touchscreen at any local web UI is configuration, not code.
 - hbosng ships BLE WiFi provisioning (`python-bless` + configurator) as the official setup path, replacing hotspot-based setup.
 - Recent hbosng development adds analog/vinyl features unavailable on buildroot: analog-recognition (SongRec track ID for analog input), a RIAA phono input processor in PipeWire, analoginput, autorec, freqresp measurement, and an `acr-webmcp` package exposing the audio controller over MCP.
@@ -62,21 +62,16 @@
 - [ ] Merge the touch-timeout package branch (includes the
   no-backlight crash-loop guard)
 
-### Beocreate on Debian (PR #2)
-- [ ] Land the adversarial-review remediation: WebSocket-event test
-  coverage, cover-art proxying for remote browsers, no-volume-control
-  crash guard, activation via the ACR-reported player name, brightness
-  floor (no persisted 0), packaging polish
-- [ ] Build the .deb; install on an hbosng SD (Pi 4); browse :8080 from
-  phone and laptop; `kiosk-mode.sh setup --url=http://localhost:8080`
-- [ ] Resolve the documented ACR contract uncertainties on-device:
-  player activation endpoint variant, volume event shape, artwork URL
-  keys, actual player naming (spotify vs librespot)
-- [ ] Merge PR #2 once device-verified
+### Beocreate on Debian
+- [x] PR #3 (one21tools PDCA adoption) merged
+- [ ] PR #2 (the port, ADRs 0001-0002): merges after its first device
+  round on the spare NG SD. Requirements, design, owner decisions and the
+  next session's steps: `beocreate-debian/SPEC.md` (one home; not restated
+  here)
 
 ### Later
-- [ ] touch-timeout: merge its upstream security/ppoll branch, bump the
-  package pin; coordinate brightness levels with the screen extension
+- [ ] touch-timeout: bump the Debian package pin past 0.8.0 when its rewrite
+  lands (ADR 0002 revisit trigger)
 - [ ] Port deferred Beocreate extensions as needed: network
   (nmcli show/change), bluetooth (`/api/btaudio/`), music library;
   wire love-track to ACR favourites
@@ -105,24 +100,9 @@
 
 Buildroot then enters maintenance mode: fix breakage only, no base upgrades.
 
-### Phase 1 — hbosng spike (one weekend, separate SD card)
-- [ ] Install RPi OS Lite + hbosng on a spare SD
-- [ ] systemd override removing `--disable-tcp` from sigmatcpserver; confirm port 8086 + `dsptoolkit` work
-- [ ] Run the Beocreate Node server on :8080; confirm the UI serves with dead backends
-- [ ] Exercise ACR REST + WebSocket APIs by hand; confirm docs match reality
-
-### Phase 2 — Port the core (iterative; each step ships something usable)
-- [ ] `sources` + `sound` extensions against ACR (functional now-playing/control UI) — this step calibrates the effort for everything after it
-- [ ] DSP extensions over re-enabled TCP
-- [ ] `networking` extension → nmcli (show/change network only; setup flow is replaced by hbosng's BLE provisioning)
-- [ ] Player toggles (unit names/config paths)
-- [ ] Stub or drop software-update, analytics, tempap
-
-### Phase 3 — Cutover
-- [ ] Package as `beocreate-classic-ui` .deb
-- [ ] Point hbosng kiosk mode at the Beocreate UI: `kiosk-mode.sh setup --url=http://localhost:8080` (configuration only)
-- [ ] Port touch-timeout (plain C daemon; runs on Debian unchanged)
-- [ ] Keep the buildroot SD as fallback; retire it when confident
+### Phases 1-3 — the Debian line
+Superseded by PR #2 and `beocreate-debian/SPEC.md` (stages D, 0-3). Keep the
+buildroot SD as the fallback until NG is the daily SD.
 
 ### Decision triggers (move from Phase 0/1 to Phase 2 when any fires)
 - Spotify/player breakage on buildroot (unfixable there)
