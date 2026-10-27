@@ -1,9 +1,10 @@
 /*Copyright 2024 HiFiBerry
 
 Shared client for the HiFiBerryOS NG Audio Control (ACR) service.
-Wraps the documented ACR REST API (default http://127.0.0.1:1080/api) and
-the /api/events WebSocket stream so that Beocreate extensions (sources,
-sound, ...) can share a single connection and a single source of truth.
+Wraps the documented ACR REST API (default http://127.0.0.1:1080/api; cover
+art from the metadata daemon, default :1084) and the /api/events WebSocket
+stream so that Beocreate extensions (sources, sound, ...) can share a single
+connection and a single source of truth.
 
 API references: acr doc/api.md and doc/websocket.md.
 
@@ -18,6 +19,10 @@ events.setMaxListeners(0);
 
 var debug = 0;
 var baseURL = process.env.BEO_ACR_ADDRESS || "http://127.0.0.1:1080";
+// The metadata daemon (audiocontrol-metadata): the shipped ACR build serves
+// cover art there only; its /api/coverart and /api/metadata paths 404 on the
+// player daemon (acr doc/communications.md).
+var metadataURL = process.env.BEO_ACR_METADATA_ADDRESS || "http://127.0.0.1:1084";
 var connected = false; // WebSocket connection state.
 var wsClient = null;
 var wsConnection = null;
@@ -94,10 +99,12 @@ async function apiPost(path, body = undefined) {
 	}
 }
 
-// Fetch a raw (non-JSON) resource from the ACR service, e.g. cover art.
-// Returns the node-fetch response promise so callers can stream the body.
+// Fetch a raw (non-JSON) resource from ACR, e.g. cover art, from the daemon
+// that serves the path. Returns the node-fetch response promise so callers
+// can stream the body.
 function fetchRaw(path) {
-	return fetch(baseURL + path);
+	var metadata = /^\/api\/(coverart|metadata)\//.test(path);
+	return fetch((metadata ? metadataURL : baseURL) + path);
 }
 
 // PLAYERS
@@ -192,6 +199,12 @@ function connectEvents() {
 			if (!data || !data.type) return;
 			if (data.type == "welcome" || data.type == "subscription_updated") return;
 			events.emit("event", data);
+			// ACR's {"type": "error"} frame (websocket.md) is data. Emitted as an
+			// EventEmitter "error" with no listener it would throw and stop the server.
+			if (data.type == "error") {
+				console.error("ACR event stream reported an error:", data.message || data);
+				return;
+			}
 			events.emit(data.type, data);
 		});
 

@@ -78,7 +78,10 @@ class BeoEnv {
 	// "listenPort"; default the public port, i.e. no nginx in front).
 	// options.touchTimeoutExecStart: what `systemctl show -p ExecStart` prints
 	// for touch-timeout.service (default: the drop-in's, with $BEO_SCREEN_ARGS).
+	// options.serverEnv: extra environment variables for the server process
+	// (e.g. {MOCK_TRY_RESTART_MS: "1500"} for a slow mock try-restart).
 	constructor(options = {}) {
+		this.serverEnv = options.serverEnv || {};
 		this.acrEnv = options.acrEnv || {};
 		this.listenPort = options.listenPort || SERVER_PORT;
 		this.touchTimeoutExecStart = options.touchTimeoutExecStart;
@@ -166,7 +169,7 @@ class BeoEnv {
 				MOCK_TOUCH_TIMEOUT_EXECSTART: (this.touchTimeoutExecStart != null) ? this.touchTimeoutExecStart : "",
 				BEO_HOSTNAMECTL: path.join(MOCK_DIR, "mock-hostnamectl.js"),
 				MOCK_HOSTNAMECTL_LOG: this.hostnamectlLog
-			}),
+			}, this.serverEnv),
 			stdio: ["ignore", "inherit", "inherit"]
 		});
 		const proc = this.serverProcess;

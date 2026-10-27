@@ -53,10 +53,12 @@ by bonjour, used in artwork URLs); on the device it belongs to nginx
 which proxies to the server on loopback `listenPort` (default 8081). Both
 server listeners (HTTP and the optional HTTPS) bind 127.0.0.1 only.
 Backend URLs configurable via `system.json` keys `acrAddress`
-(default `http://127.0.0.1:1080`) and env overrides for testing.
-`BEO_BACKLIGHT_DIR` overrides `/sys/class/backlight` and `BEO_SYSTEMCTL`
-the `systemctl` binary for the screen extension (the tests point them at
-the mock sysfs and `mock-backend/mock-systemctl.js`).
+(default `http://127.0.0.1:1080`) and env overrides for testing;
+`BEO_ACR_METADATA_ADDRESS` (default `http://127.0.0.1:1084`) is ACR's
+metadata daemon, which serves cover art. `BEO_BACKLIGHT_DIR` overrides
+`/sys/class/backlight` and `BEO_SYSTEMCTL` the `systemctl` binary (screen
+extension and `power()`; the tests point them at the mock sysfs and
+`mock-backend/mock-systemctl.js`).
 
 ## New: screen extension (brightness)
 
@@ -187,12 +189,15 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     does (artwork over an art-less song), and a second lookup for a song that
     already has artwork is not applied.
 20. A rename reaches hostnamectl as argv (no shell): the pretty name is one
-    argument exactly as typed (quotes, `$`, `&`, `;` included); the static
-    name keeps only `[a-z0-9-]`.
+    argument exactly as typed (quotes, `$`, `&`, `;` included), after `--`,
+    so a name starting with `-` is never an option; the static name keeps
+    only `[a-z0-9-]`.
 21. The settings channel is not reachable over the WebSocket: a
     `settings/saveSettings` message writes no file.
 22. The artwork proxy relays only ACR's image routes; any other ACR path,
-    including one reached through `..`, is 404 and never reaches ACR.
+    including one reached through `..` as sent on the wire, is 404 and never
+    reaches ACR. Cover-art and metadata image-cache routes come from the
+    metadata daemon, the rest from the player daemon.
 23. touch-timeout installed but not running (stopped/disabled/Condition
     failed), or `systemctl` failing: direct mode — the slider writes the
     backlight, `touch-timeout.env` still mirrors the level, and the daemon is
@@ -220,8 +225,9 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     `player_name`.
 34. The stream URL is ACR's `stream_url`; a matching update carrying only
     `album` and `stream_url` changes both and keeps the shown artwork.
-35. A failing ACR volume read or write (503) keeps the last known volume: the
-    UI is never told 0.
+35. A failing ACR volume read (503) or write (200 with `success:false`, as
+    ACR's `src/api/volume.rs` answers) keeps the last known volume: the UI is
+    never told 0.
 36. touch-timeout running under an admin ExecStart override without
     `$BEO_SCREEN_ARGS`: the slider is reported unavailable, and a brightness
     message persists nothing, writes no backlight and restarts nothing.
@@ -238,6 +244,20 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     `Content-Security-Policy: frame-ancestors 'self'`, the sign-in 302 too.
 40. With beo-server down nginx answers 502 with a page that reloads itself
     (`<meta http-equiv="refresh">`), so the keyboardless kiosk recovers.
+41. The NAS share listing runs no command built from the UI's server, user
+    name or password, and answers "no shares" (NG ships no SMB mounting).
+42. An ACR `{"type": "error"}` event-stream frame is logged; the server keeps
+    running.
+43. A screen `settings` message whose level is not a number changes nothing:
+    the level in memory, `touch-timeout.env` and `screen.json` keep the last
+    valid one.
+44. A drag during the extension's own try-restart (unit `activating`) stays in
+    daemon mode: no backlight write; the new level reaches the daemon with one
+    more restart.
+45. `max_brightness` 1023: 100 % is raw 255 (`-b`'s ceiling) and the whole
+    slider is live (50 % is raw 128), in direct and daemon mode.
+46. An MPD database update (buildroot's `update-mpd-db` is absent on NG)
+    leaves the server running.
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -245,7 +265,7 @@ matching the mock's image.
 
 ## Status
 
-All forty Playwright criteria above pass (see "Running the tests"; 37-40 need
+All forty-six Playwright criteria above pass (see "Running the tests"; 37-40 need
 `nginx` installed and are skipped without it).
 
 ## Patches applied to the vendored server
@@ -265,7 +285,11 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   subscription, reconnect with backoff, events re-emitted on a local
   EventEmitter). Base URL: `system.json` key `acrAddress`, overridable
   with `BEO_ACR_ADDRESS`. Also exposes `fetchRaw()` for streaming
-  non-JSON resources (cover art) from ACR. `sendActiveCommand` posts to
+  non-JSON resources (cover art) from the ACR daemon that serves the path:
+  `/api/coverart/` and `/api/metadata/` from the metadata daemon (the shipped
+  ACR build serves them only there, on :1084; acr `doc/communications.md`),
+  the rest from the player daemon. An ACR `{"type": "error"}` frame is logged,
+  never emitted as an EventEmitter `error` (which, with no listener, throws). `sendActiveCommand` posts to
   `/api/player/active/command/<cmd>` (0.23.6 serves no `.../send/` route).
   While connected it re-sends the subscription every few minutes
   (`BEO_ACR_KEEPALIVE_MS`): against ACR < 0.22 nothing else refreshes the
@@ -287,13 +311,14 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
     metadata is processed, and `startSource` prefers it over the first
     `aka` alias (a real device may call the Spotify player
     `librespot`; addressing it as `spotify` would 404).
-  - **Cover art proxy**: ACR is localhost-only, so its artwork URLs
-    (`http://127.0.0.1:1080/...`) don't work for remote browsers. The
+  - **Cover art proxy**: ACR's artwork URLs point at its own base
+    (`http://127.0.0.1:1080/...`), which a remote browser cannot resolve. The
     server registers `GET /acr-artwork/<path>` on the Beocreate Express
     server, which streams the image from the ACR base URL server-side
     (content type passed through) **only for ACR's image routes**
-    (`/api/imagecache/`, `/api/library/<player>/image/`,
-    `/api/coverart/artist/<id>/image`), resolving dot segments first; any
+    (`/api/imagecache/`, `/api/metadata/imagecache/`,
+    `/api/library/<player>/image/`, `/api/coverart/artist/<id>/image`),
+    resolving dot segments first; any
     other path is 404, so the proxy cannot relay ACR's non-image GETs (e.g.
     a Spotify OAuth token) at Beocreate's gateway tier. Metadata sent to the
     client carries
@@ -339,8 +364,17 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   `systemVolume` with a falsy `volumeControl` to the UI, like the old
   amixer-less path.
 - `beo-extensions/mpd/index.js` — `getMPDStatus` asks ACR for an `mpd`
-  player (fallback: systemd). Everything else untouched; the direct MPD
-  socket connection still works when `/var/run/mpd/socket` exists.
+  player (fallback: systemd). Adding/mounting a NAS is removed: it is
+  buildroot-only (`mount-smb.sh`, `/etc/smbmounts.conf`) and its commands were
+  shell strings built from the UI's server, user and password, run as root;
+  `getNASShares` answers "no shares" and `addNAS`/`mountNASAgain` are ignored.
+  A database update runs MPD's own `update` (buildroot's `update-mpd-db` is
+  absent, and spawning it stopped the server); `umount` gets its path as argv.
+  The direct MPD socket connection still works when `/var/run/mpd/socket`
+  exists.
+- `beo-extensions/dsp-programs/index.js` — the buildroot-only
+  `reconfigure-players` spawn has an `error` handler (absent on NG, it stopped
+  the server).
 - `beo-extensions/spotify/index.js` — `getspotifyStatus` asks ACR for a
   spotify/librespot player (fallback: systemd); `aka` extended to
   `["spotify", "librespot", "spotifyd", "vollibrespot"]` so ACR player
@@ -352,8 +386,8 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   install-profile` with the program path as an argv element (`execFile`), not
   concatenated into a shell command.
 - `beocreate_essentials/pi_system_tools.js` — `setHostname` passes the name to
-  `hostnamectl` as argv (`execFile`), never through a shell, and the static
-  name keeps only `[a-z0-9-]`; `BEO_HOSTNAMECTL` is the binary (test seam).
+  `hostnamectl` as argv (`execFile`) after `--`, never through a shell, and the
+  static name keeps only `[a-z0-9-]`; `BEO_HOSTNAMECTL` is the binary (test seam).
   `power("shutdown")` runs `systemctl poweroff` (Debian has no buildroot
   `shutdown-system`); a failed power command `process.exit(1)`s so systemd
   (`Restart=always`) brings the UI back rather than leaving it with no listener.
@@ -413,7 +447,8 @@ mirrored by the mock:
   older daemon — `volumeControlRange` in `/etc/beocreate/sound.json` —
   now maps to a different level (api.md's example: 78 % is -22.8 dB raw,
   -6.3 dB perceptual); the port stores no scale with it.
-- **Keep-alive**: the event subscription only listens. ACR >= 0.22.0
+- **Keep-alive**: apart from the keep-alive frame below, the event
+  subscription only listens. ACR >= 0.22.0
   pings every client every 30 s and the `websocket` client pongs on its
   own; an older ACR silently prunes a client that sent nothing for an
   hour. `Recommends: hifiberry-audiocontrol (>= 0.22)` is advisory and the
@@ -468,21 +503,26 @@ its own mock ACR (:1080), mock backlight directory and beo-server (its
 `systemctl` is the logging mock) and tears them down; ports 8080, 8081,
 8443 and 1080 must be free. Except in `11-nginx-gate` and criterion 30 the
 server listens directly on :8080 (`listenPort` = `port`), with no nginx.
-The eleven spec files cover the forty criteria: `01-ui` (1-5),
+The eleven spec files cover the forty-six criteria: `01-ui` (1-5),
 `02-screen` (6, 12, 32), `03-events` (7-9, 33, pushed WebSocket events),
 `04-player-naming` (10, mock started with
 `MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
-with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15, 20-22, 30-31),
+with `MOCK_ACR_VOLUME_AVAILABLE=0`), `06-exposure` (13-15, 20-22, 30-31, 41;
+a stub on :11084 stands in for the metadata daemon),
 `07-touch-timeout` (16-17, mock `systemctl` reporting touch-timeout
 `active`), `08-acr-enrichment` (18-19, 34, pushed `song_information_update`),
-`09-screen-hardware` (23-26, 36, the mode gate and mapping on other hardware:
-`MOCK_BACKLIGHT_MAX`, a non-active or failing `systemctl`, a second
-backlight, an admin ExecStart), `10-system` (27-29, 35: shutdown, ACR up after
-the server, `/api/players` capabilities via `MOCK_ACR_SPOTIFY_CAPABILITIES`,
-a failing volume control) and `11-nginx-gate` (37-40, the shipped nginx site;
+`09-screen-hardware` (23-26, 36, 43-45, the mode gate and mapping on other
+hardware: `MOCK_BACKLIGHT_MAX`, a non-active or failing `systemctl`, a second
+backlight, an admin ExecStart, a slow try-restart via `MOCK_TRY_RESTART_MS`),
+`10-system` (27-29, 35, 42, 46: shutdown, ACR up after the server,
+`/api/players` capabilities via `MOCK_ACR_SPOTIFY_CAPABILITIES`, a failing
+volume control, an ACR error frame, an MPD database update) and `11-nginx-gate` (37-40, the shipped nginx site;
 needs `nginx`, runs it from a temp prefix, and treats requests from 127.0.0.2
 as LAN). Screenshots of the now-playing screen and the screen-brightness
 panel are written to the untracked `tests/test-results/screenshots/`.
+After `package/build.sh`, `package/test-maintainer-scripts.sh` runs the
+built .deb's postinst/postrm in a temp root (nginx site link across install,
+upgrade, remove, reinstall; purge).
 
 ## Installing on an hbosng device
 
@@ -497,14 +537,16 @@ panel are written to the untracked `tests/test-results/screenshots/`.
    chroot — an x86 host still targets the Pi unless `ARCH=amd64` is set:
    `beocreate-debian/touch-timeout/build.sh` → `touch-timeout_<v>_<arch>.deb`.
 2. `apt install ./beocreate-classic-ui_<v>_all.deb ./touch-timeout_<v>_<arch>.deb`
-   (or `dpkg -i` + `apt -f install`). Requires `nodejs >= 20`, `nginx` and
-   `hifiberry-auth`; recommends `hifiberry-audiocontrol (>= 0.22)`,
+   (or `dpkg -i` + `apt -f install`). Requires `nodejs >= 20`, `nginx`,
+   `hifiberry-auth` and `alsa-utils` (`aplay`, product sounds); recommends `hifiberry-audiocontrol (>= 0.22)`,
    `hifiberry-dsp` and `touch-timeout`. touch-timeout's own scripts
    (dh_installsystemd) enable and start its unit, which only starts when
    `/sys/class/backlight/*` exists. beocreate-classic-ui ships, as
    conffiles, the nginx site
-   `/etc/nginx/sites-available/beocreate` (enabled by the packaged
-   symlink in `sites-enabled/`) and the gateway manifest
+   `/etc/nginx/sites-available/beocreate` (postinst enables it with a
+   `sites-enabled/` link on first install, or on a reinstall if it was
+   enabled at removal, never on an upgrade, so an admin's disabled site stays
+   disabled) and the gateway manifest
    `/etc/hifiberry/auth.d/beocreate.json` (prefix `/api/beocreate`, tier
    `ok`); hifiberry-auth's dpkg trigger on `auth.d` restarts the gateway
    so it loads the manifest.
@@ -529,7 +571,8 @@ panel are written to the untracked `tests/test-results/screenshots/`.
    `--omit=optional`, and the multi-platform prebuilds of
    `bufferutil`/`utf-8-validate` (hard dependencies of `websocket`, with
    pure-JS fallbacks) are pruned; the build fails if any `.node` binary
-   remains. It ships `/usr/share/doc/<pkg>/copyright` (Policy 12.5).
+   remains. It ships `/usr/share/doc/<pkg>/copyright` (Policy 12.5) and
+   `DEBIAN/md5sums` (`dpkg --verify`).
 4. Point the kiosk at it: `kiosk-mode.sh setup --url=http://localhost:8080`.
 
 Note: the .deb was built and inspected in the development container
@@ -561,6 +604,14 @@ criteria 37-40):
 - The per-request auth subrequest does not visibly slow a phone's page
   load on a Pi.
 
+On-device checks for ACR artwork (the mock serves one daemon; the routing
+follows acr `doc/communications.md` at 0.23.6):
+- Cover art in now playing and artist images load on a phone: the songs'
+  `cover_art_url`s are image routes the proxy relays, and `/api/coverart/*`
+  answers on :1084 (`audiocontrol-metadata` running). Note what form the URLs
+  take (relative, or absolute on :1080 or :1084): an absolute :1084 URL is
+  not rewritten through the proxy today.
+
 On-device checks for touch-timeout (ADR 0002; the daemon itself was not run
 in the container):
 - After boot `systemctl status touch-timeout` shows it running, not a
@@ -574,8 +625,9 @@ in the container):
   check keys on it; `systemd-analyze verify` keeps it unexpanded, systemd
   255), and an override in `/etc/systemd/system/touch-timeout.service.d/`
   (`systemctl edit`) turns the slider unavailable.
-- The panel's real `max_brightness`: the mapping caps raw at 255 in both
-  modes, so a larger maximum never reaches full brightness. Where it is
+- The panel's real `max_brightness`: 100 % is raw `min(max_brightness, 255)`
+  in both modes (`-b` accepts at most 255), so a larger maximum never reaches
+  full brightness, though the whole slider stays live. Where it is
   *small*, the `-b` floor of 15 becomes a large share of the range: on the
   Touch Display 2 (`max_brightness` 31, `rpi-panel-v2-regulator.c`) the floor
   is 49 % and the panel cannot go below ~48 %; below 15 the floor is 100 %

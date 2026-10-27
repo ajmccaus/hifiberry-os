@@ -65,7 +65,7 @@ function getHostname(callback) {
 function setHostname(productName, callback) {
 	getHostname(function(names) { // First get current names so that they can be replaced in /etc/hosts
 		productName = productName.replace(/\r?\n|\r/g, ""); // Remove newlines
-		execFile(hostnamectl, ["set-hostname", "--pretty", productName], function(error, stdout, stderr) {
+		execFile(hostnamectl, ["set-hostname", "--pretty", "--", productName], function(error, stdout, stderr) { // "--": a name starting with "-" is not an option.
 
 			if (error) {
 				callback(null, error);
@@ -81,7 +81,7 @@ function setHostname(productName, callback) {
 					return;
 				}
 
-				execFile(hostnamectl, ["set-hostname", "--static", n], function(error, stdout, stderr) {
+				execFile(hostnamectl, ["set-hostname", "--static", "--", n], function(error, stdout, stderr) {
 
 					if (error) {
 						callback(null, error);

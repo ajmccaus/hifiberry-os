@@ -1,13 +1,12 @@
 // Criteria 6 and 12 of beocreate-debian/PORTING.md, in direct mode (no
-// touch-timeout; the mock systemctl reports it not-found):
+// touch-timeout; the mock systemctl reports it inactive):
 // 6. Screen: the brightness slider writes the expected scaled value to the
 //    mock backlight file; the value persists across a server restart.
 // 12. Brightness floor: the UI can never apply less than raw 15 (touch-timeout's
 //    -b minimum) or persist less than 6 % (ceil(1500 / max_brightness 255)),
 //    and a persisted value below the floor is clamped up at startup.
 // 32. Direct mode never signals or (re)starts touch-timeout: after a drag and a
-//    playback start from standby the systemctl log holds no kill, restart,
-//    try-restart or start.
+//    playback start from standby the systemctl log holds only mode queries.
 
 const {test, expect} = require("@playwright/test");
 const fs = require("fs");
@@ -113,5 +112,5 @@ test("32. direct mode never signals or restarts touch-timeout", async ({page}) =
 
 	const calls = env.readSystemctlLog().slice(mark);
 	expect(calls.length).toBeGreaterThan(0); // The mode was queried ...
-	expect(calls.filter(line => /^(kill|restart|try-restart|start) /.test(line))).toEqual([]); // ... and nothing else.
+	expect(calls.filter(line => line !== "is-active touch-timeout.service")).toEqual([]); // ... and nothing else.
 });

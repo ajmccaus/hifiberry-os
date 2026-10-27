@@ -6,11 +6,16 @@
 //     sources ACR reports are enabled again and the playing one is current.
 // 29. Transport capabilities come from GET /api/players: a player that does
 //     not report `next` gets no next button, also after a pushed state change.
-// 35. A failing ACR volume read or write (api.md: 503 while the control is
-//     unavailable) keeps the last known volume: the UI is never told 0.
+// 35. A failing ACR volume read or write (a read answers 503 while the control
+//     is unavailable, a write 200 with success:false; src/api/volume.rs) keeps
+//     the last known volume: the UI is never told 0.
+// 42. An ACR {"type": "error"} event-stream frame (websocket.md) is logged; the
+//     server keeps running.
+// 46. Messages that ran buildroot-only scripts on NG (an MPD database update)
+//     leave the server running.
 
 const {test, expect} = require("@playwright/test");
-const {BeoEnv, waitFor} = require("./helpers/beo-env");
+const {BeoEnv, waitFor, httpGet} = require("./helpers/beo-env");
 const {openApp, showNowPlaying} = require("./helpers/ui");
 
 test.describe.configure({mode: "serial"});
@@ -89,4 +94,24 @@ test("35. a failing ACR volume read or write keeps the last known volume", async
 	told.push((await env.wsSend([VOLUME], isVolume)).content.volume);
 	expect(told.length).toBeGreaterThan(0);
 	for (const volume of told) expect(volume).toBe(known);
+});
+
+async function expectServerRunning() {
+	await new Promise(r => setTimeout(r, 1500));
+	expect(env.serverProcess.exitCode).toBe(null);
+	expect((await httpGet(env.serverURL + "/")).status).toBe(200);
+}
+
+test("42. an ACR error frame on the event stream does not stop the server", async () => {
+	env = new BeoEnv();
+	await env.start();
+	expect((await env.acrHook("/__test/event", {type: "error", message: "subscription rejected"})).status).toBe(200);
+	await expectServerRunning();
+});
+
+test("46. an MPD database update on NG does not stop the server", async () => {
+	env = new BeoEnv();
+	await env.start();
+	await env.wsSend([{target: "mpd", header: "updateDatabase"}]);
+	await expectServerRunning();
 });

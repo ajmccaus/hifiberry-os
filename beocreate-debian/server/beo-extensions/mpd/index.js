@@ -19,7 +19,6 @@ SOFTWARE.*/
 
 var express = require('express');
 var exec = require("child_process").exec;
-var spawn = require("child_process").spawn;
 var path = require("path");
 var fs = require("fs");
 var mpdAPI = require("mpd-api");
@@ -27,6 +26,7 @@ var mpdCmd = mpdAPI.mpd;
 var acr = require("../../beocreate_essentials/acr"); // hbosng port.
 const util = require('util');
 const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(require("child_process").execFile);
 const dnssd = require("dnssd2"); // for service discovery.
 
 var debug = beo.debug;
@@ -192,30 +192,19 @@ beo.bus.on('mpd', function(event) {
 	}
 	
 	
+	// hbosng port: adding and mounting a NAS is buildroot-only (mount-smb.sh,
+	// /etc/smbmounts.conf; NG ships no SMB mounting), and its commands were
+	// shell strings built from the UI's server, user name and password, run as
+	// root. The share listing answers "no shares" without running anything;
+	// addNAS and mountNASAgain are ignored.
 	if (event.header == "getNASShares") {
-		getNASShares(event.content).then(results => {
-			beo.sendToUI("mpd", "shares", results);
-		}).catch({
-			// Error listing shares.
-		});
-	}
-	
-	if (event.header == "addNAS") {
-		addNAS(event.content.share, event.content.path);
-	}
-	
-	if (event.header == "cancelNASAdd") {
-		cachedNASDetails = {};
+		beo.sendToUI("mpd", "shares", {server: (event.content && event.content.server) || null, shares: [], errors: true});
 	}
 	
 	if (event.header == "removeStorage") {
 		if (event.content.id) {
 			removeStorage(event.content.id);
 		}
-	}
-	
-	if (event.header == "mountNASAgain") {
-		mountNASAgain();
 	}
 	
 	
@@ -352,13 +341,16 @@ setInterval(function() {
 	isUpdatingDatabase(true);
 }, 62000);
 
-function updateDatabase() {
+// hbosng port: MPD's own update command; buildroot's update-mpd-db script
+// does not exist on NG, and spawning it raised an unhandled 'error' that
+// stopped the server.
+async function updateDatabase() {
 	cache.lastUpdate = null
 	if (debug) console.log("Triggering MPD database and cache update.");
-	spawn("/opt/hifiberry/bin/update-mpd-db", {
-		stdio: "ignore",
-		detached: true
-	}).unref();
+	if (!client) await connectMPD();
+	if (client) {
+		client.api.db.update().catch(error => console.error("MPD database update failed:", error.message));
+	}
 	beo.sendToUI("mpd", "isUpdatingDatabase", {"updating": true});
 }
 
@@ -1146,7 +1138,7 @@ async function removeStorage(id) {
 			storageFound = true;
 			if (storageList[s].mount) {
 				try {
-					await execPromise("umount "+storageList[s].mount);
+					await execFilePromise("umount", [storageList[s].mount]); // hbosng port: argv, no shell.
 				} catch (error) {
 					console.error("Unable to eject '"+storageList[s].mount+"':", error);
 					errors = 1;
@@ -1182,15 +1174,7 @@ async function removeStorage(id) {
 		if (errors == 0 && debug) console.log("Storage device '"+id+"' was ejected.");
 		storage = await listStorage();
 		beo.sendToUI("mpd", "mountedStorage", {storage: storage, unmountErrors: errors});
-		try {
-			if (debug) console.log("Triggering MPD database update.");
-			spawn("/opt/hifiberry/bin/update-mpd-db", {
-				stdio: "ignore",
-				detached: true
-			}).unref();
-		} catch (error) {
-			console.error("Error triggering MPD database update:", error);
-		}
+		updateDatabase();
 	} catch (error) {
 		console.error("Error in finalising ejection of the storage device:", error);
 	}
@@ -1336,124 +1320,6 @@ async function discoveryEvent(event, service) {
 		delete discoveredNAS[service.name];
 	}
 	beo.sendToUI("mpd", "discoveredNAS", {storage: discoveredNAS});
-}
-
-var cachedNASDetails = {};
-async function getNASShares(details) {
-	shareList = [];
-	errors = false;
-	if (details.server && details.username && details.password != undefined) {
-		if (details.server.addresses[0].indexOf(".") == -1) { // Probably an IPv6 address, try to get it in IPv4.
-			//address = await dnssd.resolveA(details.server.hostname);
-			address = details.server.addresses[0];
-		} else {
-			address = details.server.addresses[0];
-		}
-		try {
-			if (!details.server.netbios && !details.withIP) {
-				try {
-					netbiosRaw = await execPromise("nmblookup -A "+details.server.addresses[0]+" | grep '<20>' | awk '{print $1}'");
-					details.server.netbios = netbiosRaw.stdout.trim();
-				} catch (error) {
-					details.server.netbios = null;
-				}
-			}
-			if (details.server.netbios && !details.withIP) {
-				address = details.server.netbios;
-			} else {
-				address = details.server.addresses[0];
-			}
-			sharesRaw = await execPromise("smbclient -N -L "+address+" --user="+details.username+"%"+details.password+" -g | grep 'Disk|'");
-			sharesRaw = sharesRaw.stdout.trim().split("\n");
-			for (s in sharesRaw) {
-				shareList.push(sharesRaw[s].split("|")[1]);
-			}
-		} catch (error) {
-			console.error("Couldn't get a list of SMB shares:", error);
-			errors = true;
-		}
-		cachedNASDetails = details;
-	}
-	return {server: details.server, shares: shareList, errors: errors};
-}
-
-async function addNAS(share, path) {
-	details = JSON.parse(JSON.stringify(cachedNASDetails));
-	if (details.server) {
-		storageNAS = fs.readFileSync("/etc/smbmounts.conf", "utf8").split('\n');
-		beo.sendToUI("mpd", "addingNAS");
-		if (details.server.from == "bonjour") {
-			address = details.server.hostname.replace(".local.", ".local");
-		} else if (details.server.netbios) {
-			address = details.server.netbios;
-		} else {
-			address = details.server.addresses[0];
-		}
-		storageNAS.push(details.server.name+"-"+share+"-"+makeID(5)+";//"+address+"/"+share+path+";"+details.username+";"+details.password);
-		fs.writeFileSync("/etc/smbmounts.conf", storageNAS.join("\n"));
-		if (debug) console.log("Added '"+share+path+"' from NAS '"+details.server.name+"'.");
-		cachedNASDetails = {};
-		await mountNewNAS();
-		try {
-			storage = await listStorage();
-			beo.sendToUI("mpd", "mountedStorage", {storage: storage});
-		} catch (error) {
-			console.error("Error listing storage:", error);
-		}
-		listNAS();
-		beo.sendToUI("mpd", "addedNAS", {name: details.server.name});
-	} else {
-		console.error("Server details were not found in the cache.");
-	}
-}
-
-function makeID(length) { // From https://stackoverflow.com/questions/1349404/generate-random-string-characters-in-javascript
-	var result = '';
-	var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	var charactersLength = characters.length;
-	for (var i = 0; i < length; i++) {
-		result += characters.charAt(Math.floor(Math.random() * charactersLength));
-	}
-	return result;
-}
-
-
-function mountNewNAS() {
-	return new Promise(function(resolve, reject) {
-		
-		beo.sendToUI("mpd", "isUpdatingDatabase", {"updating": true});
-		
-		mountProcess = spawn("/opt/hifiberry/bin/mount-smb.sh", {
-			detached: true
-		});
-		
-		mountProcess.stdout.on('data', function (data) {
-			//console.log('stdout: ' + data.toString());
-			data = data.toString();
-			if (data.indexOf("Updating DB (")) {
-				mountProcess.unref();
-				setTimeout(function() {
-					if (debug) console.log("NAS storage mount finished.");
-					resolve(true);	
-				}, 1000);
-			}
-		});
-		
-		mountProcess.on('exit', function (code) {
-			resolve(true);
-		});
-	});
-}
-
-async function mountNASAgain() {
-	await mountNewNAS();
-	try {
-		storage = await listStorage();
-		beo.sendToUI("mpd", "mountedStorage", {storage: storage});
-	} catch (error) {
-		console.error("Error listing storage:", error);
-	}
-	listNAS();
 }
 
 interact = {

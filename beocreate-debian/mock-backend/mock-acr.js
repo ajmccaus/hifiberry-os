@@ -25,10 +25,10 @@ Test-only state manipulation (each broadcasts the matching WS event):
                                     song_information_update only if it changed
   POST /__test/player-state      -> {player, state}   (emits state_changed)
   POST /__test/volume            -> {percentage}      (emits volume_changed)
-  POST /__test/volume-failure    -> {status}: GET /api/volume/state and POST
-                                    /api/volume/set answer that HTTP status
-                                    (api.md: 503 while the control is
-                                    unavailable) until {status: null}
+  POST /__test/volume-failure    -> {status}: GET /api/volume/state answers
+                                    that HTTP status and every volume POST
+                                    answers 200 + success:false, as ACR does
+                                    (src/api/volume.rs), until {status: null}
   POST /__test/event             -> broadcast a raw event object as-is
 
 Environment:
@@ -393,14 +393,15 @@ app.get("/api/volume/info", (req, res) => {
 
 let volumeFailureStatus = null; // Set by /__test/volume-failure.
 
+// ACR (src/api/volume.rs): GET /state fails with an HTTP error status (503
+// without a control); every volume POST answers 200, a failure being
+// success:false in the body.
 function volumeUnavailable(req, res, next) {
-	if (!volumeAvailable) {
-		return res.status(404).json({success: false, message: "No volume control available", new_state: null});
-	}
-	if (volumeFailureStatus) {
-		return res.status(volumeFailureStatus).json({success: false, message: "Volume control temporarily unavailable", new_state: null});
-	}
-	next();
+	const failed = !volumeAvailable || volumeFailureStatus;
+	if (!failed) return next();
+	const body = {success: false, message: volumeAvailable ? "Volume control temporarily unavailable" : "Volume control not available", new_state: null};
+	if (req.method == "POST") return res.json(body);
+	res.status(volumeAvailable ? volumeFailureStatus : 503).json(body);
 }
 
 app.get("/api/volume/state", volumeUnavailable, (req, res) => res.json(volumeState()));
@@ -416,10 +417,10 @@ app.post("/api/volume/set", volumeUnavailable, (req, res) => {
 		pct = ((parseFloat(body.decibels) + 60) / 60) * 100;
 	}
 	if (pct == null || isNaN(pct)) {
-		return res.status(400).json({success: false, message: "No volume value provided", new_state: null});
+		return res.json({success: false, message: "No volume value provided", new_state: null});
 	}
 	if (pct < 0 || pct > 100) {
-		return res.status(400).json({success: false, message: "Volume percentage " + pct + " is out of range (0-100)", new_state: null});
+		return res.json({success: false, message: "Volume percentage " + pct + " is out of range (0-100)", new_state: null});
 	}
 	state.volume.percentage = Math.round(pct * 10) / 10;
 	emitVolumeChanged();

@@ -40,7 +40,9 @@ SOFTWARE.*/
 // (screen.json), never sysfs, which holds the dim level while touch-timeout has
 // the screen dimmed. The backlight device is chosen as the pinned daemon
 // chooses it (main.c find_backlight_device): the first directory entry in
-// readdir order whose name does not start with "." or contain "..". systemctl
+// readdir order whose name does not start with "." or contain "..". While this
+// extension's own try-restart runs, the unit reads activating, so a mode query
+// waits for it to finish instead of mistaking the daemon for absent. systemctl
 // is BEO_SYSTEMCTL (default "systemctl"; the test seam), run without a shell.
 
 var fs = require("fs");
@@ -64,20 +66,27 @@ var daemonEnvFile = path.join(beo.dataDirectory, "touch-timeout.env");
 
 // Floor and ceiling in raw backlight units, the same in both modes:
 // touch-timeout's -b accepts 15-255 and silently runs its default (150)
-// outside it. The floor also keeps a persisted 0 from leaving the kiosk dark
-// with no on-device recovery; switching the display off belongs to
-// touch-timeout. The persisted floor is the smallest percentage mapping to
-// at least MINIMUM_RAW, at most 100 % (a panel whose max_brightness is below
-// 15 is held at full brightness; direct mode then writes max_brightness, and
-// the daemon clamps -b to it itself, main.c:577-582).
+// outside it. 100 % is the ceiling, min(max_brightness, 255), so the whole
+// slider stays live on a panel above 255 (which then tops out at raw 255).
+// The floor also keeps a persisted 0 from leaving the kiosk dark with no
+// on-device recovery; switching the display off belongs to touch-timeout. The
+// persisted floor is the smallest percentage mapping to at least MINIMUM_RAW,
+// at most 100 % (a panel whose max_brightness is below 15 is held at full
+// brightness; direct mode then writes max_brightness, and the daemon clamps
+// -b to it itself, main.c:577-582).
 var MINIMUM_RAW = 15;
 var MAXIMUM_RAW = 255;
+
+function ceilingRaw() {
+	return Math.min(maxBrightness, MAXIMUM_RAW);
+}
 
 // Slide and stop send the same message, so release is detected server-side:
 // no message for this long means the slider has settled.
 var SETTLE_MS = 500;
 var settleTimer = null;
 var dragMode = null; // Promise of the mode, queried once per drag.
+var restarting = null; // Promise of this extension's own try-restart while it runs.
 
 function systemctl(args, callback) {
 	execFile(process.env.BEO_SYSTEMCTL || "systemctl", args, function(error, stdout) {
@@ -88,6 +97,7 @@ function systemctl(args, callback) {
 
 // Resolves "daemon", "fixed" or "direct" (see the header).
 function screenMode() {
+	if (restarting) return restarting.then(screenMode);
 	return new Promise(function(resolve) {
 		systemctl(["is-active", "touch-timeout.service"], function(error, stdout) {
 			if (error || String(stdout).trim() != "active") return resolve("direct");
@@ -137,11 +147,11 @@ function detectBacklight() {
 function clampPercentage(percentage) {
 	percentage = parseFloat(percentage);
 	if (isNaN(percentage)) return null;
-	return Math.max(Math.min(100, Math.ceil(MINIMUM_RAW * 100 / maxBrightness)), Math.min(100, percentage));
+	return Math.max(Math.min(100, Math.ceil(MINIMUM_RAW * 100 / ceilingRaw())), Math.min(100, percentage));
 }
 
 function rawBrightness(percentage) {
-	return Math.max(MINIMUM_RAW, Math.min(MAXIMUM_RAW, Math.round(percentage * maxBrightness / 100)));
+	return Math.max(MINIMUM_RAW, Math.min(ceilingRaw(), Math.round(percentage * ceilingRaw() / 100)));
 }
 
 // Direct mode only. The kernel rejects a value above max_brightness.
@@ -174,9 +184,18 @@ function updateDaemon(daemon, restartIfUnchanged) {
 			return;
 		}
 	}
-	if (daemon && (current != content || restartIfUnchanged)) {
-		systemctl(["try-restart", "touch-timeout.service"]);
-	}
+	if (daemon && (current != content || restartIfUnchanged)) restartDaemon();
+}
+
+// systemctl waits for the restart job, so `restarting` covers the whole of it.
+function restartDaemon() {
+	var job = new Promise(function(resolve) {
+		systemctl(["try-restart", "touch-timeout.service"], function() {
+			if (restarting === job) restarting = null;
+			resolve();
+		});
+	});
+	restarting = job;
 }
 
 function setBrightness(percentage) {
@@ -288,8 +307,14 @@ beo.bus.on("screen", function(event) {
 
 	switch (event.header) {
 		case "settings":
+			// The only setting is the level, and only a number in range may reach
+			// the env file; a clamped one is persisted as clamped.
 			if (event.content.settings) {
-				settings = Object.assign(settings, event.content.settings);
+				var level = clampPercentage(event.content.settings.brightness);
+				if (level != null) {
+					settings.brightness = level;
+					if (level !== event.content.settings.brightness) beo.saveSettings("screen", settings, true);
+				}
 			}
 			break;
 		case "getBrightness":

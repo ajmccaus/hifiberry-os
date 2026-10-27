@@ -314,6 +314,8 @@ var _ = require('underscore');
 									if (debug) console.log("Running HiFiBerry reconfigure script.");
 									beo.sendToUI("dsp-programs", {header: "configuringSystem"});
 									configureProcess = spawn("/opt/hifiberry/bin/reconfigure-players", {detached: true, stdio: "ignore"});
+									// hbosng port: NG does not ship the script; an unhandled spawn 'error' stops the server.
+									configureProcess.on("error", function(error) { console.error("Could not run reconfigure-players:", error.message); });
 									configureProcess.unref();
 								}
 								

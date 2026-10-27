@@ -16,6 +16,14 @@
 //     that drops $BEO_SCREEN_ARGS: the slider is reported unavailable, and a
 //     brightness message neither persists, writes the backlight, nor restarts
 //     the daemon.
+// 43. A screen settings message whose level is not a number changes nothing:
+//     the level in memory, touch-timeout.env and screen.json keep the last
+//     valid level.
+// 44. A drag that starts while the extension's own try-restart is running
+//     (the unit reads "activating") stays in daemon mode: the backlight is
+//     never written, and the new level reaches the daemon with one more restart.
+// 45. max_brightness 1023: 100 % is raw 255 (touch-timeout's -b ceiling) and the
+//     whole slider stays live (50 % is raw 128), in direct and daemon mode.
 
 const {test, expect} = require("@playwright/test");
 const {execFileSync} = require("child_process");
@@ -128,3 +136,46 @@ test("36. an admin ExecStart override takes the slider out instead of faking a l
 	expect((env.readScreenSettings() || {}).brightness).not.toBe(30);
 	expect(env.readBrightness()).toBe(backlight);
 });
+
+const RESTART = "try-restart touch-timeout.service";
+const settle = () => new Promise(r => setTimeout(r, 1200)); // > SETTLE_MS (500) + systemctl.
+
+function setLevel(level) {
+	return env.wsSend([{target: "screen", header: "setBrightness", content: level}]);
+}
+
+test("43. a settings message with a non-number level changes nothing", async () => {
+	await startEnv({touchTimeout: "active"});
+	await setLevel(50);
+	await settle();
+	await env.wsSend([{target: "screen", header: "settings", content: {settings: {brightness: "abc"}}}]);
+	// The level in memory is what the next settle or startup writes to the env file.
+	const isBrightness = data => data.target === "screen" && data.header === "brightness";
+	expect((await env.wsSend([{target: "screen", header: "getBrightness"}], isBrightness)).content.brightness).toBe(50);
+	expect(env.readTouchTimeoutEnv()).toBe(envFor(128));
+	expect(env.readScreenSettings().brightness).toBe(50);
+});
+
+test("44. a drag during the extension's own restart stays in daemon mode", async () => {
+	await startEnv({touchTimeout: "active", serverEnv: {MOCK_TRY_RESTART_MS: "2000"}});
+	const backlight = env.readBrightness();
+	const mark = env.readSystemctlLog().length;
+	await setLevel(40);
+	await new Promise(r => setTimeout(r, 1000)); // Settled at 500 ms; the restart runs until about 2.5 s.
+	await setLevel(60);
+	await waitFor(async () => env.readTouchTimeoutEnv() === envFor(153), "touch-timeout.env to reach -b 153");
+	await waitFor(async () => env.readSystemctlLog().slice(mark).filter(line => line === RESTART).length === 2, "a second restart");
+	expect(env.readBrightness()).toBe(backlight);
+});
+
+for (const mode of ["inactive", "active"]) {
+	test("45. max_brightness 1023, touch-timeout " + mode + ": 100 % is raw 255 and 50 % is raw 128", async () => {
+		await startEnv({touchTimeout: mode, backlightMax: 1023});
+		for (const [level, raw] of [[50, 128], [100, 255]]) {
+			await setLevel(level);
+			await settle();
+			expect(env.readTouchTimeoutEnv()).toBe(envFor(raw));
+			if (mode == "inactive") expect(env.readBrightness()).toBe(raw);
+		}
+	});
+}

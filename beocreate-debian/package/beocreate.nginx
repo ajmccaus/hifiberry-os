@@ -1,7 +1,8 @@
 # Beocreate classic UI on :8080 behind the hifiberry-auth gateway (ADR 0001).
-# Installed as /etc/nginx/sites-available/beocreate (+ sites-enabled symlink).
-# beo-server listens on loopback :8081 only; this block is its sole LAN door.
-# Executable test: tests/11-nginx-gate.spec.js (this file, ports as shipped).
+# Installed as /etc/nginx/sites-available/beocreate (postinst links it into
+# sites-enabled). beo-server listens on loopback :8081 only; this block is its
+# sole LAN door. Executable test: tests/11-nginx-gate.spec.js runs this file
+# with the gateway port remapped, and without `listen [::]` where IPv6 is off.
 # - Own verify location, not 00-verify.conf: the gateway sees the synthetic
 #   prefix /api/beocreate (manifest: /etc/hifiberry/auth.d/beocreate.json).
 # - Loopback (the kiosk) is never gated.

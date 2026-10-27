@@ -14,8 +14,9 @@
 # (the public :8080 is an nginx site gated by the auth gateway, ADR 0001; the
 # Node server listens on loopback :8081 only), and the hbosng stack
 # (hifiberry-audiocontrol for ACR on :1080, hifiberry-dsp for sigmatcpserver).
-# hifiberry-audiocontrol >= 0.22: the server's listen-only event subscription
-# is kept alive by that release's pings (PORTING.md, "Contract notes").
+# hifiberry-audiocontrol >= 0.22: that release pings event-stream clients;
+# the server also re-sends its subscription so an older ACR keeps it too
+# (PORTING.md, "Contract notes"). alsa-utils: aplay plays the product sounds.
 # Recommends touch-timeout (built by ../touch-timeout/build.sh, arch-specific):
 # when installed it owns the backlight and this package's drop-in hands it the
 # slider level from /etc/beocreate/touch-timeout.env (ADR 0002).
@@ -45,7 +46,6 @@ mkdir -p "$STAGING/DEBIAN" \
          "$STAGING/usr/lib/systemd/system/touch-timeout.service.d" \
          "$STAGING/usr/share/beocreate" \
          "$STAGING/etc/nginx/sites-available" \
-         "$STAGING/etc/nginx/sites-enabled" \
          "$STAGING/etc/hifiberry/auth.d"
 
 # 1: Server payload -> /opt/beocreate (without node_modules; installed below).
@@ -134,9 +134,11 @@ chmod 644 "$STAGING/usr/share/doc/$PACKAGE/copyright"
 # 5: nginx site (public :8080 -> loopback :8081) and the auth gateway
 # manifest. Shipped as package files (conffiles), not copied in postinst:
 # hifiberry-auth's dpkg trigger on /etc/hifiberry/auth.d fires only for files
-# a package ships, and it is what makes the gateway load the manifest.
+# a package ships, and it is what makes the gateway load the manifest. The
+# sites-enabled link is not a package file: postinst creates it (first
+# install, or reinstall of a site that was enabled at removal) and postrm
+# removes it, so an admin's disabled site stays disabled across upgrades.
 install -m 644 "$MYDIR/beocreate.nginx" "$STAGING/etc/nginx/sites-available/beocreate"
-ln -s ../sites-available/beocreate "$STAGING/etc/nginx/sites-enabled/beocreate"
 install -m 644 "$MYDIR/beocreate-auth.json" "$STAGING/etc/hifiberry/auth.d/beocreate.json"
 cat > "$STAGING/DEBIAN/conffiles" <<'EOF'
 /etc/nginx/sites-available/beocreate
@@ -151,7 +153,7 @@ Version: $VERSION
 Section: sound
 Priority: optional
 Architecture: $ARCH
-Depends: nodejs (>= 20), nginx, hifiberry-auth
+Depends: nodejs (>= 20), nginx, hifiberry-auth, alsa-utils
 Recommends: hifiberry-audiocontrol (>= 0.22), hifiberry-dsp, touch-timeout
 Installed-Size: $INSTALLED_SIZE
 Maintainer: HiFiBerry <support@hifiberry.com>
@@ -222,6 +224,12 @@ if [ "$1" = "configure" ]; then
             systemctl try-restart touch-timeout.service || true
         fi
     fi
+    # Enable the site on first install, or again if it was enabled when the
+    # package was removed (postrm leaves the marker); never on an upgrade.
+    if [ -z "$2" ] || [ -e /etc/beocreate/.nginx-site-enabled ]; then
+        [ -e /etc/nginx/sites-enabled/beocreate ] || ln -s ../sites-available/beocreate /etc/nginx/sites-enabled/beocreate
+        rm -f /etc/beocreate/.nginx-site-enabled
+    fi
     # After the restart above: an upgraded server only now frees :8080 for nginx.
     reload_nginx
 fi
@@ -270,7 +278,12 @@ case "$1" in
             done
         }
         restart_dropin_units
-        # The sites-enabled symlink is gone: drop the :8080 server block.
+        # Disable the site (its conffile stays until purge) and remember that it
+        # was enabled, so a reinstall enables it again.
+        if [ -L /etc/nginx/sites-enabled/beocreate ]; then
+            rm -f /etc/nginx/sites-enabled/beocreate
+            if [ -d /etc/beocreate ]; then touch /etc/beocreate/.nginx-site-enabled; fi
+        fi
         reload_nginx
         ;;
     purge)
@@ -292,7 +305,9 @@ EOF
 } > "$STAGING/DEBIAN/postrm"
 chmod 755 "$STAGING/DEBIAN/postrm"
 
-# 7: Build the .deb.
+# 7: Build the .deb, with the md5sums dpkg --verify checks against.
+(cd "$STAGING" && find . -type f ! -path './DEBIAN/*' -printf '%P\0' | sort -z | xargs -0 md5sum) > "$STAGING/DEBIAN/md5sums"
+chmod 644 "$STAGING/DEBIAN/md5sums"
 dpkg-deb --build --root-owner-group "$STAGING" "$MYDIR/${PACKAGE}_${VERSION}_${ARCH}.deb"
 
 echo "Built: $MYDIR/${PACKAGE}_${VERSION}_${ARCH}.deb"

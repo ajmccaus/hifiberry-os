@@ -211,9 +211,10 @@ beo.bus.on("sources", function(event) {
 // server ("acr-artwork/<path>"), which the untouched client resolves against
 // window.location.hostname + ":" + picturePort. This route streams the image
 // from ACR server-side, and only from ACR's image routes (0.23.6: the image
-// cache, a library's images, an artist's image): the proxy runs at Beocreate's
-// gateway tier, so it must not relay ACR's other GET routes.
-var ACR_IMAGE_ROUTE = /^\/api\/(imagecache\/|library\/[^\/]+\/image\/|coverart\/artist\/[^\/]+\/image(\/|$))/;
+// caches, a library's images, an artist's image; acr.fetchRaw asks the daemon
+// that serves each): the proxy runs at Beocreate's gateway tier, so it must
+// not relay ACR's other GET routes.
+var ACR_IMAGE_ROUTE = /^\/api\/((metadata\/)?imagecache\/|library\/[^\/]+\/image\/|coverart\/artist\/[^\/]+\/image(\/|$))/;
 
 beo.expressServer.get("/acr-artwork/*", function(req, res) {
 	var remotePath = req.originalUrl.replace(/^\/acr-artwork/, ""); // Keeps the query string intact.

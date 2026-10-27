@@ -6,16 +6,21 @@
 // 15. The server is not reachable on the machine's LAN address (loopback only).
 // 20. A rename reaches hostnamectl as argv, never through a shell: the pretty
 //     name arrives as one argument exactly as typed (quotes, $, & and ;
-//     included); the static name keeps only [a-z0-9-].
+//     included), after "--", so a name starting with "-" is never an option;
+//     the static name keeps only [a-z0-9-].
 // 21. The WebSocket cannot reach the settings writer: a settings/saveSettings
 //     message leaves system.json byte-for-byte unchanged.
 // 22. The artwork proxy relays only ACR's image routes: any other ACR path,
-//     also one reached through dot segments, is 404 and never reaches ACR.
+//     also one reached through dot segments as sent on the wire, is 404 and
+//     never reaches ACR. Cover-art and metadata image routes come from the
+//     metadata daemon (port 1084 on a device), the rest from the player daemon.
 // 30. The device layout (system.json port 8080, listenPort 8081): the server
 //     answers on 127.0.0.1:8081 and nothing of it accepts on :8080, which
 //     belongs to nginx.
 // 31. With server.key/server.cert present the HTTPS listener runs, on loopback
 //     only: it answers on 127.0.0.1 and is refused on the LAN address.
+// 41. NAS shares: the listing runs no command built from the UI's server, user
+//     name or password and answers "no shares" (NG ships no SMB mounting).
 
 const {test, expect} = require("@playwright/test");
 const crypto = require("crypto");
@@ -33,16 +38,37 @@ test.describe.configure({mode: "serial"});
 
 let env;
 let server;
+let metadataDaemon; // Stands in for audiocontrol-metadata (criterion 22).
+const METADATA_PORT = 11084;
 
 test.beforeAll(async () => {
-	env = new BeoEnv();
+	metadataDaemon = http.createServer((req, res) => {
+		res.writeHead(200, {"Content-Type": "image/png"});
+		res.end("metadata:" + req.url);
+	});
+	await new Promise(resolve => metadataDaemon.listen(METADATA_PORT, "127.0.0.1", resolve));
+	env = new BeoEnv({serverEnv: {BEO_ACR_METADATA_ADDRESS: "http://127.0.0.1:" + METADATA_PORT}});
 	await env.start();
 	server = new URL(env.serverURL);
 });
 
 test.afterAll(async () => {
 	if (env) await env.stop();
+	if (metadataDaemon) metadataDaemon.close();
 });
+
+// GET with the path sent exactly as given (http.get(url) would resolve dot segments first).
+function rawGet(rawPath) {
+	return new Promise((resolve, reject) => {
+		const req = http.request({host: server.hostname, port: server.port, path: rawPath}, res => {
+			let body = "";
+			res.on("data", chunk => body += chunk);
+			res.on("end", () => resolve({status: res.statusCode, body: body}));
+		});
+		req.on("error", reject);
+		req.end();
+	});
+}
 
 // Raw WebSocket handshake; resolves with the HTTP status (101 = accepted).
 function upgradeStatus(extraHeaders) {
@@ -112,16 +138,18 @@ test("15. the server does not listen on the machine's LAN address", async () => 
 });
 
 test("20. a rename reaches hostnamectl as one literal argument per name", async () => {
-	const name = 'Kitchen "Hi-Fi" $HOME & Co.; ok';
-	await env.wsSend([{target: "product-information", header: "setSystemName", content: {newSystemName: name}}]);
-	// The calls after the pretty name: startup also names the system.
-	const calls = await waitFor(async () => {
-		const log = env.readHostnamectlLog();
-		const at = log.findIndex(args => args[1] === "--pretty" && args[2] === name);
-		return (at != -1 && log.slice(at).some(args => args[1] === "--static")) ? log.slice(at) : null;
-	}, "hostnamectl to be called for both names");
-	expect(calls[0]).toEqual(["set-hostname", "--pretty", name]);
-	expect(calls).toContainEqual(["set-hostname", "--static", "kitchen-hi-fi-home--co--ok"]);
+	for (const [name, staticName] of [['Kitchen "Hi-Fi" $HOME & Co.; ok', "kitchen-hi-fi-home--co--ok"],
+		["--host=evil.example", "hostevil-example"]]) {
+		await env.wsSend([{target: "product-information", header: "setSystemName", content: {newSystemName: name}}]);
+		// The calls after the pretty name: startup also names the system.
+		const calls = await waitFor(async () => {
+			const log = env.readHostnamectlLog();
+			const at = log.findIndex(args => args[1] === "--pretty" && args[3] === name);
+			return (at != -1 && log.slice(at).some(args => args[1] === "--static")) ? log.slice(at) : null;
+		}, "hostnamectl to be called for both names of " + name);
+		expect(calls[0]).toEqual(["set-hostname", "--pretty", "--", name]);
+		expect(calls).toContainEqual(["set-hostname", "--static", "--", staticName]);
+	}
 });
 
 test("21. a settings/saveSettings message over the WebSocket writes nothing", async () => {
@@ -138,12 +166,33 @@ test("21. a settings/saveSettings message over the WebSocket writes nothing", as
 test("22. the artwork proxy relays only ACR's image routes", async () => {
 	await env.clearAcrRequests();
 	for (const remote of ["/api/spotify/access_token", "/api/imagecache/../spotify/access_token",
-		"/api/imagecache/%2e%2e/spotify/access_token", "/api/library/mpd/refresh", "/api/version"]) {
-		expect((await httpGet(env.serverURL + "/acr-artwork" + remote)).status, remote).toBe(404);
+		"/api/imagecache/%2e%2e/spotify/access_token", "/api/coverart/artist/x/image/../../../../spotify/access_token",
+		"/api/metadata/../spotify/access_token", "/api/library/mpd/refresh", "/api/version"]) {
+		expect((await rawGet("/acr-artwork" + remote)).status, remote).toBe(404);
 	}
-	expect((await httpGet(env.serverURL + "/acr-artwork/api/imagecache/mock.png")).status).toBe(200);
+	expect((await rawGet("/acr-artwork/api/imagecache/mock.png")).status).toBe(200);
 	const reached = (await env.acrRequests()).map(r => r.method + " " + r.path);
 	expect(reached).toEqual(["GET /api/imagecache/mock.png"]);
+	// Cover art and the metadata image cache: the metadata daemon serves them.
+	for (const remote of ["/api/coverart/artist/QUJD/image/1", "/api/metadata/imagecache/abc.png"]) {
+		const res = await rawGet("/acr-artwork" + remote);
+		expect(res.status, remote).toBe(200);
+		expect(res.body).toBe("metadata:" + remote);
+	}
+	expect((await env.acrRequests()).length).toBe(1);
+});
+
+test("41. the NAS share listing runs no command built from UI text", async () => {
+	const marker = path.join(env.workDir, "pwned");
+	const shell = "$(touch " + marker + ")";
+	const reply = await env.wsSend([{target: "mpd", header: "getNASShares", content: {
+		server: {name: "nas", addresses: ["127.0.0.1;touch " + marker + ";#"], netbios: null},
+		username: "u" + shell, password: shell
+	}}], data => data.target === "mpd" && data.header === "shares");
+	await new Promise(r => setTimeout(r, 1000));
+	expect(fs.existsSync(marker), "a UI-supplied command ran").toBe(false);
+	expect(reply.content.errors).toBe(true);
+	expect(reply.content.shares).toEqual([]);
 });
 
 // 30-31 replace the env above with the device layout.
