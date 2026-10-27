@@ -1,7 +1,10 @@
 #!/bin/bash
-if [ "$1" == "" ]; then 
-#	TAG=2023.02.3
-        TAG=2023.11-rc1
+if [ "$1" == "" ]; then
+	# 2023.02.3 is the newest tag with a matching
+	# buildroot/buildroot-<tag>.patch; 2023.11-rc1 has no patch yet and
+	# would build unpatched
+	TAG=2023.02.3
+#	TAG=2023.11-rc1
 else
 	TAG=$1
 fi

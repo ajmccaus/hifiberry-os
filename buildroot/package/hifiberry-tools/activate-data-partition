@@ -7,7 +7,10 @@ FSTABDATA=`cat /etc/fstab | grep /data`
 if [ "$FSTABDATA" == "" ]; then
  echo "No filesystem defined in /etc/fstab"
  fsck -t f2fs ${DEVICE}4
- if [ "$?" != "0" ]; then
+ RES=$?
+ # fsck exit 1 means errors were corrected - the filesystem is usable.
+ # Only reformat (destroying /data) when fsck could not repair it.
+ if [ "$RES" != "0" ] && [ "$RES" != "1" ]; then
   mkfs -t f2fs -f ${DEVICE}4
  fi
 fi
@@ -28,7 +31,7 @@ if [ "$DATA" == "" ]; then
  fi
 
  echo "adding /data to fstab"
- cat /etc/fstab | grep -v ${DEVICE}p4 > /tmp/fstab
+ cat /etc/fstab | grep -v ${DEVICE}4 > /tmp/fstab
  echo "${DEVICE}4    /data    auto    defaults,nofail    0    2" >>/tmp/fstab
  mv /etc/fstab /etc/fstab.bak
  mv /tmp/fstab /etc/fstab

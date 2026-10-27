@@ -8,8 +8,6 @@ define RASPI_WIFI_BUILD_CMDS
 endef
 
 define RASPI_WIFI_INSTALL_TARGET_CMDS
-	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/interfaces \
-		$(TARGET_DIR)/etc/network/interfaces.bak
 	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/hostapd.conf \
 		$(TARGET_DIR)/etc/tempap-hostapd.conf
 	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/dnsmasq.conf \
@@ -19,11 +17,10 @@ define RASPI_WIFI_INSTALL_TARGET_CMDS
 	# Disable stub resolver in systemd resolved
 	$(INSTALL) -D -m 0644 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/resolved.conf \
 		$(TARGET_DIR)/etc/systemd/resolved.conf
-endef
-
-define RASPI_WIFI_INSTALL_INIT_SYSV
-    $(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/S30copy-wifi-config \
-           $(TARGET_DIR)/etc/init.d/
+	# Headless WiFi provisioning: pick up wpa_supplicant.conf/systemname
+	# that the user dropped on the FAT partition
+	$(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/copy-config \
+		$(TARGET_DIR)/opt/hifiberry/bin/copy-config
 endef
 
 define RASPI_WIFI_INSTALL_INIT_SYSTEMD
@@ -37,6 +34,11 @@ define RASPI_WIFI_INSTALL_INIT_SYSTEMD
 		$(TARGET_DIR)/usr/lib/systemd/system/tempap-hostapd.service
 	$(INSTALL) -D -m 0444 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/tempap.service \
 		$(TARGET_DIR)/usr/lib/systemd/system/tempap.service
+	$(INSTALL) -D -m 0444 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/raspi-wifi/copy-config.service \
+		$(TARGET_DIR)/usr/lib/systemd/system/copy-config.service
+	mkdir -p $(TARGET_DIR)/etc/systemd/system/multi-user.target.wants
+	ln -sf ../../../../usr/lib/systemd/system/copy-config.service \
+		$(TARGET_DIR)/etc/systemd/system/multi-user.target.wants/copy-config.service
 endef
 
 $(eval $(generic-package))

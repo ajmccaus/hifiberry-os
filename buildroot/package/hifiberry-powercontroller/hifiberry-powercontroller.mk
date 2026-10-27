@@ -13,7 +13,9 @@ define HIFIBERRY_POWERCONTROLLER_INSTALL_TARGET_CMDS
                 $(TARGET_DIR)/opt/hifiberry/bin/pc-write
     $(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/hifiberry-powercontroller/write-firmware \
                 $(TARGET_DIR)/opt/hifiberry/powercontroller/write-firmware
-    curl -L $(PC_DOWNLOAD) --output $(TARGET_DIR)/opt/hifiberry/powercontroller/firmware-$(PC_VERSION).hex
+    # -f makes a failed download fail the build instead of silently
+    # writing an HTML error page that write-firmware would flash later
+    curl -f -L $(PC_DOWNLOAD) --output $(TARGET_DIR)/opt/hifiberry/powercontroller/firmware-$(PC_VERSION).hex
 endef
 
 define HIFIBERRY_POWERCONTROLLER_INSTALL_INIT_SYSTEMD

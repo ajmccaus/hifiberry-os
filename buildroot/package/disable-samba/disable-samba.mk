@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-DISABLE_SAMBE_DEPENDENCIES = samba
+DISABLE_SAMBA_DEPENDENCIES = samba
 
 define DISABLE_SAMBA_INSTALL_IMAGES_CMDS
 	mkdir -p $(TARGET_DIR)/lib/systemd/system-preset

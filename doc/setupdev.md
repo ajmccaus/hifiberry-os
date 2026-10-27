@@ -77,7 +77,7 @@ The only thing left to do is follow the instruction of [Start the first build](#
 :warning: **Build experience inside the Dev Container might be much poorer than bare metal.**
 
 ## Troubleshooting
-* If you cloned the HiFiBerryOs repository under Windows and you encounter an issue in the devcontainer with the symlinks of `buildroot/package/spotifyd/spotifyd.mk` and `./buildroot/board/` setting up the devcontainer seems to have gone wrong as those should have been recreated during container build. In any case there is a script to fix those:
+* If you cloned the HiFiBerryOs repository under Windows and you encounter an issue in the devcontainer with the symlinks of `./buildroot/board/` setting up the devcontainer seems to have gone wrong as those should have been recreated during container build. In any case there is a script to fix those:
 
         ./.devcontainer/prepare-devcontainer --fix-symlinks
 

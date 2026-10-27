@@ -62,7 +62,7 @@ for i in "$@"; do
         RELEASE=critical
         ;;
     *)
-	RELEASE=$1
+	RELEASE=$i
  esac
 done
 
@@ -82,6 +82,13 @@ sleep 5
 
 if [ "$VERSION" == "" ]; then
  VERSION=$MYVERSION
+fi
+
+# The server may return an error page that passes curl -f; never feed a
+# non-numeric version into the update logic
+if ! [[ "$VERSION" =~ ^[0-9]+$ ]]; then
+ echo "Invalid release information received from $UPDATEURL, aborting..."
+ exit 1
 fi
 
 if [ "$VERSION" -le "$MYVERSION" ]; then

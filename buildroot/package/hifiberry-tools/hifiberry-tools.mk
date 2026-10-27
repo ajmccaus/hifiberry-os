@@ -72,7 +72,6 @@ define HIFIBERRY_TOOLS_INSTALL_TARGET_CMDS
     $(INSTALL) -D -m 0755 $(BR2_EXTERNAL_HIFIBERRY_PATH)/package/hifiberry-tools/snd_soc_core_disable_pm.conf \
 		$(TARGET_DIR)/etc/modprobe.d/snd_soc_core_disable_pm.conf
     touch $(TARGET_DIR)/resize-me
-    touch $(TARGET_DIR)/etc/spotifyd.conf
 
     # disable sshd by default
     if [ -f $(TARGET_DIR)/etc/systemd/system/multi-user.target.wants/sshd.service ]; then \

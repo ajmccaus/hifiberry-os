@@ -1,9 +1,9 @@
 [Unit]
 Description=copy-config - copy config files from FAT partition
-Before=network.target
+Before=network.target wpa_supplicant@wlan0.service
 
 [Service]
-Type=oneshort
+Type=oneshot
 ExecStart=/opt/hifiberry/bin/copy-config
 StandardOutput=journal
 

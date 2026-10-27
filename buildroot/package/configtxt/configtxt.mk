@@ -26,6 +26,9 @@ endef
 define CONFIGTXT_BASE
         sed -i '/kernel=/d' $(BINARIES_DIR)/rpi-firmware/config.txt
 	echo "kernel=Image" >> $(BINARIES_DIR)/rpi-firmware/config.txt
+	# No firmware rainbow splash before the psplash boot screen
+	sed -i '/disable_splash/d' $(BINARIES_DIR)/rpi-firmware/config.txt
+	echo "disable_splash=1" >> $(BINARIES_DIR)/rpi-firmware/config.txt
 endef
 
 define CONFIGTXT_REMOVESTUFF

@@ -1,6 +1,7 @@
 [Unit]
 Description=Start containers
 Requires=docker.service
+After=docker.service
 
 [Service]
 Type=oneshot

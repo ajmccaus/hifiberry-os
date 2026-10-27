@@ -3,6 +3,7 @@ Description=Install upgrades
 
 [Timer]
 OnCalendar=03:00
+Persistent=true
 Unit=updater.service
 
 [Install]

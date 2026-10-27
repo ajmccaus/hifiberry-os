@@ -2,7 +2,6 @@ mpd.service
 raat.service
 bluealsa-aplay.service
 bluealsa.service
-mpd-mpris.service
 ympd.service
 a2dp-agent.service
 mpris-proxy.service
@@ -12,7 +11,6 @@ lmsmpris.service
 squeezelite.service
 sshd.service
 snapcastmpris.service
-watchdog.service
 dlnampris.service
 alsaloop.service
 weston.service
