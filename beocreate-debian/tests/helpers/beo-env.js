@@ -1,8 +1,9 @@
 // Test environment for the Beocreate-on-Debian port.
 // Starts (and tears down) the mock ACR, a mock backlight sysfs directory and
 // the Beocreate server itself, wired together through environment variables.
-// The server always runs systemctl as mock-backend/mock-systemctl.js and
-// hostnamectl as mock-backend/mock-hostnamectl.js, which log every call;
+// The server always runs systemctl as mock-backend/mock-systemctl.js,
+// hostnamectl as mock-backend/mock-hostnamectl.js and avahi-publish as
+// mock-backend/mock-avahi-publish.js, which log every call;
 // touch-timeout is not running (direct mode) unless the env is created with
 // {touchTimeout: "active"} (daemon mode, ADR 0002). By default the server
 // listens on the public port itself (no nginx); {listenPort: 8081} gives the
@@ -101,6 +102,7 @@ class BeoEnv {
 	get backlightDeviceDir() { return path.join(this.backlightDir, "mock-backlight"); }
 	get systemctlLog() { return path.join(this.workDir, "systemctl.log"); }
 	get hostnamectlLog() { return path.join(this.workDir, "hostnamectl.log"); }
+	get avahiLog() { return path.join(this.workDir, "avahi.log"); }
 	get touchTimeoutEnvFile() { return path.join(this.configDir, "touch-timeout.env"); }
 
 	async start() {
@@ -168,7 +170,9 @@ class BeoEnv {
 				MOCK_SYSTEMCTL_EXIT: (this.systemctlExit != null) ? String(this.systemctlExit) : "",
 				MOCK_TOUCH_TIMEOUT_EXECSTART: (this.touchTimeoutExecStart != null) ? this.touchTimeoutExecStart : "",
 				BEO_HOSTNAMECTL: path.join(MOCK_DIR, "mock-hostnamectl.js"),
-				MOCK_HOSTNAMECTL_LOG: this.hostnamectlLog
+				MOCK_HOSTNAMECTL_LOG: this.hostnamectlLog,
+				BEO_AVAHI_PUBLISH: path.join(MOCK_DIR, "mock-avahi-publish.js"),
+				MOCK_AVAHI_LOG: this.avahiLog
 			}, this.serverEnv),
 			stdio: ["ignore", "inherit", "inherit"]
 		});
@@ -291,6 +295,12 @@ class BeoEnv {
 			});
 			client.connect("ws://127.0.0.1:" + this.listenPort + "/", "beocreate");
 		});
+	}
+
+	// Mock avahi-publish starts ({argv}) and exits ({exit}), in order.
+	readAvahiLog() {
+		if (!fs.existsSync(this.avahiLog)) return [];
+		return fs.readFileSync(this.avahiLog, "utf8").split("\n").filter(line => line).map(line => JSON.parse(line));
 	}
 
 	// The touch-timeout EnvironmentFile the screen extension writes, or null.

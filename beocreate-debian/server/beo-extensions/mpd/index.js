@@ -27,7 +27,6 @@ var acr = require("../../beocreate_essentials/acr"); // hbosng port.
 const util = require('util');
 const execPromise = util.promisify(exec);
 const execFilePromise = util.promisify(require("child_process").execFile);
-const dnssd = require("dnssd2"); // for service discovery.
 
 var debug = beo.debug;
 
@@ -1181,145 +1180,12 @@ async function removeStorage(id) {
 }
 
 
-// Discover NAS storage.
-
-var browser = null;
-var discoveryStopDelay = null;
+// hbosng port: NAS discovery (mDNS and NetBIOS browsing, which shelled out
+// with addresses learned from the LAN) went with the NAS flow; the UI's list of
+// discovered servers stays empty.
 var discoveredNAS = {};
-
-function startDiscovery() {
-
+function listNAS() {
 	beo.sendToUI("mpd", "discoveredNAS", {storage: {}});
-	if (!browser) {
-		browser = new dnssd.Browser(dnssd.tcp('smb'));
-		
-		browser.on('serviceUp', service => discoveryEvent("up", service));
-		browser.on('serviceDown', service => discoveryEvent("down", service));
-		browser.on('serviceChanged', service => discoveryEvent("changed", service));
-		browser.on('error', error => console.log("dnssd error: ", error));
-	} else {
-		browser.stop();
-	}
-	
-	browser.start();
-	clearTimeout(discoveryStopDelay);
-	discoveryStopDelay = setTimeout(function() {
-		stopDiscovery();
-	}, 60000);
-}
-
-function stopDiscovery() {
-	if (browser) browser.stop();
-}
-
-var listingNAS = false;
-async function listNAS() {
-	if (!listingNAS) {
-		if (debug) console.log("Looking for NAS devices with SMB protocol...");
-		beo.sendToUI("mpd", "discoveringNAS", {content: true});
-		listingNAS = true;
-		discoveredNAS = {};
-		netbiosLookupRaw = null;
-		namesUpdated = false;
-		try {
-			netbiosLookupRaw = await execPromise("/opt/hifiberry/bin/list-smb-servers");
-		} catch (error) {
-			console.error("Error performing a NetBIOS lookup:", error);
-		}	
-		if (netbiosLookupRaw && netbiosLookupRaw.stdout) {
-			netbiosItems = netbiosLookupRaw.stdout.trim().split("\n");
-			for (n in netbiosItems) {
-				netbios = netbiosItems[n].split(", ");
-				netbiosIP = netbios[1].split(" ")[0].trim();
-				netbiosName = netbios[0].trim();
-		
-				if (!discoveredNAS[netbiosName]) {
-					discoveredNAS[netbiosName] = {name: netbiosName, netbios: netbiosName, from: "netbios", addresses: [netbiosIP]};
-				}
-				
-				for (s in storageList) {
-					if (storageList[s].kind == "NAS") {
-						if ((storageList[s].address == discoveredNAS[netbiosName].addresses[0] || discoveredNAS[netbiosName].netbios.indexOf(storageList[s].name) != -1) &&
-							storageList[s].name != discoveredNAS[netbiosName].name) {
-							storageList[s].name = discoveredNAS[netbiosName].name;
-							namesUpdated = true;
-						}
-					}
-				}
-			}
-		}
-		if (namesUpdated) beo.sendToUI("mpd", "mountedStorage", {storage: storageList});
-		beo.sendToUI("mpd", "discoveredNAS", {storage: discoveredNAS});
-		startDiscovery();
-		beo.sendToUI("mpd", "discoveringNAS");
-		listingNAS = false;
-	}
-}
-
-async function discoveryEvent(event, service) {
-	if (event == "up" || event == "changed") {
-		if (!discoveredNAS[service.name]) discoveredNAS[service.name] = {};
-		discoveredNAS[service.name].name = service.name;
-		discoveredNAS[service.name].from = "bonjour";
-		discoveredNAS[service.name].hostname = service.host; 
-		discoveredNAS[service.name].addresses = service.addresses;
-		
-		discoveredNAS[service.name].addresses.sort(function(a, b) {
-			if (a.length >= b.length) {
-				return 1;
-			} else {
-				return -1;
-			}
-		});
-		
-		if (discoveredNAS[service.name].addresses[0].indexOf(":") != -1) { // We just have an IPv6 address, see if we can get it in IPv4.
-			try {
-				avahiRaw = await execPromise("avahi-resolve-host-name \""+service.host+"\"");
-				address = avahiRaw.stdout.trim().split("\t")[1];
-				if (address.indexOf(".") != -1) {
-					discoveredNAS[service.name].addresses.unshift(address.trim());
-				}
-			} catch (error) {
-				
-			}
-		}
-		var namesUpdated = false;
-		
-		for (n in discoveredNAS) {
-			if (discoveredNAS[n].from == "netbios" &&
-				discoveredNAS[n].addresses[0] == service.addresses[0]) {
-				discoveredNAS[service.name].netbios = discoveredNAS[n].netbios;
-				delete discoveredNAS[n];
-			}
-		}
-		
-		if (!discoveredNAS[service.name].netbios && discoveredNAS[service.name].addresses[0].indexOf(".") != -1) {
-			try {
-				// This entry has no Netbios name, so try to look it up.
-				netbiosRaw = await execPromise("nmblookup -A "+discoveredNAS[service.name].addresses[0]+" | grep '<20>' | awk '{print $1}'");
-				discoveredNAS[service.name].netbios = netbiosRaw.stdout.trim();
-			} catch (error) {
-				console.error("Error getting NetBIOS name for '"+service.name+"':", error);
-			}
-		}
-		
-		for (s in storageList) {
-			if (storageList[s].kind == "NAS") {
-				if (((discoveredNAS[service.name].netbios &&
-					discoveredNAS[service.name].netbios.indexOf(storageList[s].name) != -1) || (
-					discoveredNAS[service.name].hostname && 
-					discoveredNAS[service.name].hostname.indexOf(storageList[s].name) != -1)) &&
-					storageList[s].name != service.name) {
-					storageList[s].name = service.name;
-					namesUpdated = true;
-				}
-			}
-		}
-		if (namesUpdated) beo.sendToUI("mpd", "mountedStorage", {storage: storageList});
-	} else if (event == "down") {
-		delete discoveredNAS[service.name];
-	}
-	beo.sendToUI("mpd", "discoveredNAS", {storage: discoveredNAS});
 }
 
 interact = {

@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "aplay": "^1.2.0",
-    "dnssd2": "^1.0.0",
     "eventemitter3": "^3.1.2",
     "express": "^4.17.1",
     "mpd-api": "^1.1.2",

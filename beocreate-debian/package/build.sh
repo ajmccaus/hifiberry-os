@@ -16,7 +16,8 @@
 # (hifiberry-audiocontrol for ACR on :1080, hifiberry-dsp for sigmatcpserver).
 # hifiberry-audiocontrol >= 0.22: that release pings event-stream clients;
 # the server also re-sends its subscription so an older ACR keeps it too
-# (PORTING.md, "Contract notes"). alsa-utils: aplay plays the product sounds.
+# (PORTING.md, "Contract notes"). alsa-utils: aplay plays the product sounds;
+# avahi-utils: avahi-publish announces the service through avahi-daemon.
 # Recommends touch-timeout (built by ../touch-timeout/build.sh, arch-specific):
 # when installed it owns the backlight and this package's drop-in hands it the
 # slider level from /etc/beocreate/touch-timeout.env (ADR 0002).
@@ -153,7 +154,7 @@ Version: $VERSION
 Section: sound
 Priority: optional
 Architecture: $ARCH
-Depends: nodejs (>= 20), nginx, hifiberry-auth, alsa-utils
+Depends: nodejs (>= 20), nginx, hifiberry-auth, alsa-utils, avahi-utils
 Recommends: hifiberry-audiocontrol (>= 0.22), hifiberry-dsp, touch-timeout
 Installed-Size: $INSTALLED_SIZE
 Maintainer: HiFiBerry <support@hifiberry.com>

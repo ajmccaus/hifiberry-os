@@ -46,7 +46,7 @@ Under policies `unset`/`off`/`risky` (the default), any LAN device or guest can,
 - [verified] The harness reaches the server on loopback (`tests/playwright.config.js:35`).
 - [verified] The SigmaTCP drop-in binds localhost (`sigmatcp-enable-tcp.conf:9` `--localhost` → hifiberry-dsp@551c195 `sigmatcp.py:1384-1398`): no LAN door. Its overlap with `/api/dsptoolkit` is a separate call.
 - [checkable] New spec: foreign-Origin WS refused, `POST /general-settings/restartProduct` 404, no listener on a non-loopback address; whole suite green — builder; result: verified — criteria 13-15 (`tests/06-exposure.spec.js`; 13 and 15 fail pre-change) and 37-40 (`tests/11-nginx-gate.spec.js`: the shipped site + manifest in front of the real server), whole suite green.
-- [checkable] Criterion 15 is TCP only; node also binds UDP 5353 on all interfaces (dnssd2 mDNS responder, `NetworkInterface.js:211,259`, from code): a root LAN listener outside the gateway — owner: device tester (`ss -lnup`). Named exception or avahi: owner's call, open.
+- [verified] Criterion 15 is TCP only, and dnssd2 bound UDP 5353 as root; owner chose avahi: an `avahi-publish` child announces, node holds no UDP socket (criterion 47).
 - [unverifiable] On device: `ss -lntup` shows node on TCP loopback only, IPv6 `listen [::]:8080` + `allow ::1` work (untested: sandbox has no IPv6; mirrors hbos-ui's `listen [::]:80`), LAN :8080 302s under `all` — REOPEN-IF any fails (PORTING.md on-device item).
 - [unverifiable] The per-request auth subrequest (LAN only; upstream exempts static) doesn't visibly slow a phone's load on a Pi — REOPEN-IF it does → `auth_request off` on the static prefixes.
 

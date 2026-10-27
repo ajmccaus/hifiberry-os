@@ -27,7 +27,10 @@ keeping the interface's look exactly ("I like the look of the interface").
 | Kiosk appearance: light | owner, 27 Oct |
 | No Spotify account is linked on the spare SD (ACR serves its token unauthenticated on the LAN, see Risks) | owner, 27 Oct |
 | Staged path: cleanup, then typed server, then type-checked client; no client rewrite | PM call, owner delegated |
-| Trust model: the owner reviews and merges every PR; CI and the device script supply the evidence; no signed reports, approval environments or test-change guards | Claude's call after three blocked review rounds of heavier designs; reversible, see Open questions |
+| Trust model: the owner reviews and merges every PR; CI and the device script supply the evidence; no signed reports, approval environments or test-change guards | owner, 27 Oct |
+| Deploy user on the spare SD: a dedicated user with the owner's SSH key and passwordless sudo | owner, 27 Oct |
+| mDNS: Beocreate announces itself through NG's avahi-daemon (`avahi-publish`), with no responder of its own (C47) | owner, 27 Oct |
+| ACR's LAN token exposure is reported to hifiberry/acr privately (GitHub private vulnerability reporting), by the owner | owner, 27 Oct |
 
 ## Requirements
 
@@ -71,8 +74,7 @@ A requirement without a working check is not done.
 ### Security
 
 - **R11** Nothing listens on the LAN outside the nginx gateway on :8080
-  (CLAUDE.md Sacred). C15, C30-31, C37; `ss -lntup` (device). Open: dnssd2's
-  UDP 5353 responder (Open questions).
+  (CLAUDE.md Sacred). C15, C30-31, C37, C47; `ss -lntup` (device).
 - **R12** The gateway's password policy applies; the local kiosk is never
   asked for one. C37, C40.
 - **R13** No other web page can control the device: Origin check, no POST
@@ -235,23 +237,63 @@ It cannot reach the owner's LAN, so device rounds go through the owner's compute
 - **DSP hardware untested**: the add-on is frozen and labelled untested by
   choice; a DSP owner's report reopens it.
 
-## Open questions for the owner
+## Open items for the owner
 
-1. The trust model above (you review and merge; no signed reports or approval
-   environments): confirm, or ask for the heavier design.
-2. Enable GitHub Actions on the fork (Stage 0 needs it).
-3. Allowlist `cdn.playwright.dev` and `playwright.download.prss.microsoft.com`
+1. Enable GitHub Actions on the fork (Stage 0 needs it).
+2. Allowlist `cdn.playwright.dev` and `playwright.download.prss.microsoft.com`
    in the cloud environment's network settings for the WebKit baseline.
-4. Deploy user on the spare SD: a dedicated user with passwordless sudo
-   (recommended) or key-only root SSH.
-5. dnssd2's UDP 5353 mDNS responder outside the gateway: keep as a named
-   exception, or publish through avahi.
-6. Report ACR's LAN exposure upstream (Claude drafts, you approve the text).
+3. File the ACR report privately at
+   https://github.com/hifiberry/acr/security/advisories/new with the approved
+   text in the appendix (no tool in a Claude cloud session can file a private
+   advisory). If private reporting is off, email HiFiBerry support instead.
+4. Image the spare SD: Raspberry Pi OS Lite 64-bit (trixie), SSH key only,
+   reachable from your computer as `hbosng-dev`.
+
+## Next session (the hand-off)
+
+Run from Claude Code on the owner's computer (the cloud session cannot reach
+the LAN):
+1. Build Stage D's `beocreate-debian/deploy/device` (`bootstrap`, `install`,
+   `check`, `rollback`; argv only, unit tests for its argument checks) as a
+   PR on top of PR #2.
+2. `device bootstrap` the spare SD (creates the passwordless-sudo deploy
+   user), `device install` PR #2's head, `device check`, and the owner rows
+   (touch feel, sound, panel vs the baseline PNGs). Every "On-device checks"
+   item in `PORTING.md` is part of this round.
+3. If the round passes: flip ADRs 0001-0002 to `accepted`, retarget nothing
+   (PR #2 already targets `master` once PR #3 is merged), merge PR #2. A
+   failure becomes the cheapest automated repro first, then the fix.
+4. PR #1 (buildroot) touches the Sacred updater path: it merges only after
+   `extract-update --simulate` and its other device items (its `roadmap.md`)
+   pass on a reflashable buildroot SD.
 
 ## Order
 
-1. Stage D's tool and bootstrap, as the first PR on top of PR #2; then a
-   device round of PR #2's head on the spare SD.
-2. PR #3 (one21tools), then PR #2, merge.
+1. Stage D's tool and bootstrap, then a device round of PR #2's head on the
+   spare SD.
+2. PR #2 merges (PR #3 is merged).
 3. Stage 0, then Stages 1, 2 and 3, each a stack of small PRs, with a device
    round wherever a device row's behaviour changes.
+
+## Appendix: ACR report (owner-approved text)
+
+> Title: Spotify access token readable without authentication from the LAN (port 1080)
+>
+> **Summary.** With the packaged configuration, `audiocontrol` listens on all interfaces, and `GET /api/spotify/access_token` returns the linked account's OAuth access token as plain text with no authentication. Any device on the network, or on the Tailscale network, can read the token and act on the owner's Spotify account within the token's scope.
+>
+> **Where (0.23.6, e8c45df, the current main)**
+> - `configs/audiocontrol.json:46`: `"host": "0.0.0.0"`, installed to `/etc/audiocontrol/` (`debian/hifiberry-audiocontrol.install:3`).
+> - `src/api/spotify.rs:431-432`: `GET /access_token` returns the token; it is mounted in both route lists (`:477`, `:489`), whatever `api_enabled` says.
+> - The nginx gateway covers the `/api/audiocontrol/` path only. The direct port goes around it, as hifiberry-os's own `docs/security-model.md` says ("a backend still bound to 0.0.0.0 can be reached around the gateway"). Its `docs/tailscale.md` lists "AudioControl direct :1080" as a supported route.
+>
+> **To reproduce**
+> 1. Link a Spotify account.
+> 2. From another machine on the LAN, run `curl http://<device>:1080/api/spotify/access_token`.
+>
+> **Suggested fix.** The doc comment at `spotify.rs:424-429` says the route's only caller is the metadata daemon on the same host. Either of these would fix it:
+> - bind the player daemon to `127.0.0.1`, which the security model already plans per service;
+> - or serve `/access_token` to loopback clients only.
+>
+> The MPD control port (`0.0.0.0:6600`) has the same around-the-gateway shape, if that is in scope.
+>
+> *Disclosure: written by Claude (Claude Code) under the direction of the repo owner.*

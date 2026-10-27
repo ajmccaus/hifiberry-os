@@ -258,6 +258,9 @@ Extension `screen` in `server/beo-extensions/screen/` (ADR 0002):
     slider is live (50 % is raw 128), in direct and daemon mode.
 46. An MPD database update (buildroot's `update-mpd-db` is absent on NG)
     leaves the server running.
+47. The service is announced through avahi (`avahi-publish -s <name>
+    _beocreate._tcp <port> <txt>...` as argv, stopped at shutdown); the server
+    holds no UDP socket of its own.
 
 Cover art (criterion 2) is additionally asserted to be served through
 the Beocreate server's artwork proxy (below), with the proxied bytes
@@ -265,7 +268,7 @@ matching the mock's image.
 
 ## Status
 
-All forty-six Playwright criteria above pass (see "Running the tests"; 37-40 need
+All forty-seven Playwright criteria above pass (see "Running the tests"; 37-40 need
 `nginx` installed and are skipped without it).
 
 ## Patches applied to the vendored server
@@ -398,8 +401,11 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
 - `beo-extensions/general-settings/index.js` — defines `var debug = beo.debug`
   (it referenced `debug` undefined, so Settings > Shut Down/Restart threw
   before emitting the request).
-- `beocreate_essentials/communication.js` — `startBonjour` wrapped in
-  try/catch so unavailable mDNS (containers) can't crash the server. The
+- `beocreate_essentials/communication.js` — the service is announced through
+  NG's avahi-daemon by an `avahi-publish` child given argv only
+  (`BEO_AVAHI_PUBLISH`, the test seam), not by dnssd2's own mDNS responder,
+  so the server opens no UDP socket on the LAN; a missing `avahi-publish` is
+  logged, never fatal. The
   WebSocket refuses (403) a handshake whose `Origin` is present but does
   not parse as a URL (e.g. `null`) or whose host differs from the `Host`
   header (case-insensitive); a handshake without `Origin` (non-browser
@@ -408,7 +414,7 @@ Kept as small as possible; the client-side code (`*-client.js`, `.html`,
   navigation set.
 - `server/package.json` — **new**; declares the runtime dependencies
   (express, websocket, eventemitter3, underscore, xml-js, node-fetch@2,
-  mpd-api, dnssd2, aplay).
+  mpd-api, aplay).
 
 New extension: `beo-extensions/screen/` (backend + `menu.html` +
 `screen-client.js` + symbols). The brightness slider copies the sound
@@ -503,7 +509,7 @@ its own mock ACR (:1080), mock backlight directory and beo-server (its
 `systemctl` is the logging mock) and tears them down; ports 8080, 8081,
 8443 and 1080 must be free. Except in `11-nginx-gate` and criterion 30 the
 server listens directly on :8080 (`listenPort` = `port`), with no nginx.
-The eleven spec files cover the forty-six criteria: `01-ui` (1-5),
+The eleven spec files cover the forty-seven criteria: `01-ui` (1-5),
 `02-screen` (6, 12, 32), `03-events` (7-9, 33, pushed WebSocket events),
 `04-player-naming` (10, mock started with
 `MOCK_ACR_SPOTIFY_NAME=librespot`), `05-no-volume` (11, mock started
@@ -514,7 +520,7 @@ a stub on :11084 stands in for the metadata daemon),
 `09-screen-hardware` (23-26, 36, 43-45, the mode gate and mapping on other
 hardware: `MOCK_BACKLIGHT_MAX`, a non-active or failing `systemctl`, a second
 backlight, an admin ExecStart, a slow try-restart via `MOCK_TRY_RESTART_MS`),
-`10-system` (27-29, 35, 42, 46: shutdown, ACR up after the server,
+`10-system` (27-29, 35, 42, 46-47: shutdown, ACR up after the server,
 `/api/players` capabilities via `MOCK_ACR_SPOTIFY_CAPABILITIES`, a failing
 volume control, an ACR error frame, an MPD database update) and `11-nginx-gate` (37-40, the shipped nginx site;
 needs `nginx`, runs it from a temp prefix, and treats requests from 127.0.0.2
@@ -538,7 +544,8 @@ upgrade, remove, reinstall; purge).
    `beocreate-debian/touch-timeout/build.sh` → `touch-timeout_<v>_<arch>.deb`.
 2. `apt install ./beocreate-classic-ui_<v>_all.deb ./touch-timeout_<v>_<arch>.deb`
    (or `dpkg -i` + `apt -f install`). Requires `nodejs >= 20`, `nginx`,
-   `hifiberry-auth` and `alsa-utils` (`aplay`, product sounds); recommends `hifiberry-audiocontrol (>= 0.22)`,
+   `hifiberry-auth`, `alsa-utils` (`aplay`, product sounds) and `avahi-utils`
+   (`avahi-publish`, the Bonjour announcement); recommends `hifiberry-audiocontrol (>= 0.22)`,
    `hifiberry-dsp` and `touch-timeout`. touch-timeout's own scripts
    (dh_installsystemd) enable and start its unit, which only starts when
    `/sys/class/backlight/*` exists. beocreate-classic-ui ships, as
@@ -591,13 +598,10 @@ On-device checks for the auth gateway (ADR 0001; the nginx site was
 exercised in the container against nginx 1.24 and the gateway's real
 decision code, IPv4 only, and is tested on every run against a verify stub,
 criteria 37-40):
-- `ss -lntup` shows node on TCP 127.0.0.1 only and nginx on :8080. On UDP
-  node also holds 0.0.0.0:5353: dnssd2's mDNS responder advertising
-  `_beocreate._tcp` (`node_modules/dnssd2/lib/NetworkInterface.js:211,259`;
-  read from the code, not observed: bonjour did not start in the container).
-  It parses LAN packets in the root process outside the gateway; criterion
-  15 checks TCP only. Whether to keep it or publish through avahi is open
-  (ADR 0001 assumptions).
+- `ss -lntup` shows node on TCP 127.0.0.1 only, no UDP socket of node's, and
+  nginx on :8080; `avahi-browse -rt _beocreate._tcp` lists the device under
+  its system name (criterion 47 checks the argv against a mock, not
+  avahi-daemon).
 - No client frames :8080 from another origin (`X-Frame-Options: SAMEORIGIN`
   would blank it); none was found in this repo or upstream hbosng.
 - `listen [::]:8080` and `allow ::1` work (the container has no IPv6;

@@ -19,9 +19,11 @@ SOFTWARE.*/
 
 // Handles socket communication between the sound system and the client.
 
-//var mdns = require('mdns');
-var dnssd = require('dnssd2'); // Replacing mdns, to avoid Avahi errors and to be consistent with the desktop app.
-//var bonjour = require('bonjour')();
+// hbosng port: the service is announced through the system's avahi-daemon (the
+// mDNS responder NG runs), by an `avahi-publish` child given argv only, so this
+// process opens no mDNS socket on the LAN. BEO_AVAHI_PUBLISH is the binary
+// (default "avahi-publish"; the test seam).
+var spawn = require('child_process').spawn;
 var fs = require('fs');
 var server = require('websocket').server;
 var http = require('http');
@@ -33,7 +35,6 @@ module.exports = BeoCom;
 
 var acceptedProtocols = [];
 var acceptConnections = true;
-var announceService;
 var connections = [];
 var connectionLinks = [];
 var socket;
@@ -167,65 +168,52 @@ function sameOrigin(origin, host) {
 	}
 }
 
-var bonjourRestartTimeout = null;
 var bonjourStarted = false;
+var announcement = null; // {name, serviceType, port, txt} while advertising.
+var publisher = null; // The avahi-publish child.
+
+function publish() {
+	var args = ["-s", announcement.name, "_" + announcement.serviceType + "._tcp", String(announcement.port)];
+	for (var key in announcement.txt) args.push(key + "=" + announcement.txt[key]);
+	var child = spawn(process.env.BEO_AVAHI_PUBLISH || "avahi-publish", args, {stdio: "ignore"});
+	child.on("error", function(error) {
+		console.error("Could not announce the service through avahi:", error.message);
+		if (publisher === child) {
+			publisher = null;
+			bonjourStarted = false;
+		}
+	});
+	child.on("exit", function() {
+		if (publisher === child) {
+			publisher = null;
+			bonjourStarted = false;
+		}
+	});
+	publisher = child;
+	bonjourStarted = true;
+}
+
+function unpublish() {
+	if (publisher) {
+		var child = publisher;
+		publisher = null;
+		child.kill("SIGTERM");
+	}
+	bonjourStarted = false;
+}
+
 BeoCom.prototype.startBonjour = function(options, callback) {
 	// ANNOUNCE BONJOUR SERVICE
 	// This enables clients that have Bonjour discovery to find the product without requiring the user to know and type in the hostname.
 	if (options.name) {
-		if (options.serviceType) {
-			serviceType = options.serviceType;
-		} else {
-			serviceType = 'beocreate';
-		}
-		if (options.advertisePort) {
-			advertisePort = options.advertisePort;
-		} else {
-			advertisePort = wsPort;
-		}
-		try { // hbosng port: don't crash the server if mDNS is unavailable (containers, restricted networks).
-		if (options.txtRecord) {
-			announceService = new dnssd.Advertisement(dnssd.tcp(serviceType), advertisePort, { name: options.name, txt: options.txtRecord });
-			//announceService = bonjour.publish({name: options.name, port: advertisePort, type: serviceType, txt: options.txtRecord}); // bonjour
-			//announceService = new mdns.Advertisement(mdns.tcp(serviceType), advertisePort, { name: options.name, txtRecord: options.txtRecord });
-		} else {
-			//announceService = new dnssd.Advertisement(dnssd.tcp(serviceType), advertisePort, { name: options.name});
-			//announceService = new mdns.Advertisement(mdns.tcp(serviceType), advertisePort, { name: options.name });
-		}
-		announceService.start();
-		bonjourStarted = true;
-		} catch (error) {
-			console.error("Could not start Bonjour advertisement:", error.message);
-			bonjourStarted = false;
-			if (callback) callback(false);
-			return;
-		}
-
-		announceService.on("up", function(error) {
-			bonjourStarted = true;
-		});
-		
-		announceService.on("error", function(error) {
-			console.log(error);
-		});
-		
-		announceService.on("stopped", function(event) {
-			console.log("dnssd: Advertisement stopped.");
-			bonjourStarted = false;
-			/*clearTimeout(bonjourRestartTimeout);
-			if (bonjourStarted) {
-				bonjourRestartTimeout = setTimeout(function() {
-					announceService.start();
-				}, 20000);
-			}*/
-		});
-		
-		announceService.on("instanceRenamed", function(event) {
-			console.log(event);
-		});
-		announceService.on("hostRenamed", function(event) {
-			console.log(event);
-		});
+		announcement = {
+			name: options.name,
+			serviceType: options.serviceType || "beocreate",
+			port: options.advertisePort || wsPort,
+			txt: options.txtRecord || {}
+		};
+		unpublish();
+		publish();
 		if (callback) callback(true);
 	}
 }
@@ -267,8 +255,10 @@ function findID(connection) {
 
 
 BeoCom.prototype.updateTxtRecord = function(txtRecord) {
-	if (announceService) {
-		announceService.updateTXT(txtRecord);
+	if (announcement && bonjourStarted) {
+		announcement.txt = txtRecord;
+		unpublish();
+		publish();
 	}
 }
 
@@ -287,30 +277,16 @@ BeoCom.prototype.stopSocket = function(callback) {
 }
 
 BeoCom.prototype.stopBonjour = function(callback) {
-	if (announceService) {
-		bonjourStarted = false;
-		announceService.stop(false, function() { // dnssd
-			if (callback) callback(true);
-		});
-		//announceService.stop();
-		//if (callback) callback(true);
-	} else {
-		bonjourStarted = false;
-		if (callback) callback(true);
-	}
+	unpublish();
+	if (callback) callback(true);
 }
 
 BeoCom.prototype.restartBonjour = function(callback) {
-	if (bonjourStarted) {
-		this.stopBonjour(function(result) {
-			announceService.start();
-			if (callback) callback(result);
-		});
-	} else {
-		announceService.start();
-		bonjourStarted = true;
-		if (callback) callback(result);
+	if (announcement) {
+		unpublish();
+		publish();
 	}
+	if (callback) callback(true);
 }
 
 BeoCom.prototype.send = function(jsonObject, restrictBroadcast) {

@@ -13,9 +13,13 @@
 //     server keeps running.
 // 46. Messages that ran buildroot-only scripts on NG (an MPD database update)
 //     leave the server running.
+// 47. The service is announced through avahi: `avahi-publish -s <name>
+//     _beocreate._tcp <port> <txt>...` as argv, stopped at shutdown, and the
+//     server itself holds no UDP socket (no mDNS responder of its own).
 
 const {test, expect} = require("@playwright/test");
-const {BeoEnv, waitFor, httpGet} = require("./helpers/beo-env");
+const {execFileSync} = require("child_process");
+const {BeoEnv, waitFor, httpGet, SERVER_PORT} = require("./helpers/beo-env");
 const {openApp, showNowPlaying} = require("./helpers/ui");
 
 test.describe.configure({mode: "serial"});
@@ -114,4 +118,18 @@ test("46. an MPD database update on NG does not stop the server", async () => {
 	await env.start();
 	await env.wsSend([{target: "mpd", header: "updateDatabase"}]);
 	await expectServerRunning();
+});
+
+test("47. the service is announced through avahi, and the server opens no mDNS socket", async () => {
+	env = new BeoEnv({serverEnv: {MOCK_HOSTNAMECTL_NAME: "Kitchen"}});
+	await env.start();
+	const start = await waitFor(async () => env.readAvahiLog().find(entry => entry.argv), "avahi-publish to be started");
+	expect(start.argv.slice(0, 4)).toEqual(["-s", "Kitchen", "_beocreate._tcp", String(SERVER_PORT)]);
+	expect(start.argv.slice(4).every(field => /^[a-z]+=/.test(field))).toBe(true);
+	expect(start.argv.slice(4).map(field => field.split("=")[0])).toEqual(["type", "typeui", "id", "image", "status"]);
+	// No UDP socket of the server's own (dnssd2 bound 0.0.0.0:5353).
+	const udp = execFileSync("ss", ["-H", "-uanp"], {encoding: "utf8"});
+	expect(udp).not.toContain("pid=" + env.serverProcess.pid + ",");
+	await env.stopServer();
+	await waitFor(async () => env.readAvahiLog().some(entry => entry.exit), "avahi-publish to be stopped");
 });
