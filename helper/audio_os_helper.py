@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""audio-os-helper: loopback device API (screen, radio favourites, power, info) behind nginx.
+"""audio-os-helper: loopback device API (screen, radio favorites, power, info) behind nginx.
 Binds 127.0.0.1 only; every subprocess is an argv list; state files are written atomically."""
 from __future__ import annotations
 
@@ -224,7 +224,7 @@ class App:
         with self.lock:
             write_atomic(self.cfg.state_dir / "radio.json", json.dumps({"stations": stations}))
             self.stations = stations
-        log.info("radio favourites set count=%d", len(stations))
+        log.info("radio favorites set count=%d", len(stations))
         return {"stations": stations}
 
     # --- system ---
@@ -265,7 +265,7 @@ class App:
                 data = json.loads(resp.read(1 << 20))
         except (OSError, HTTPException, ValueError):
             return None
-        # Top-level "state": acr/doc/api.md:647. The enum serialises lowercase
+        # Top-level "state": acr/doc/api.md:647. The enum serializes lowercase
         # ("playing"; acr/crates/acr-types/src/playback_state.rs:10) though the doc shows "Playing".
         state = data.get("state") if isinstance(data, dict) else None
         return isinstance(state, str) and state.lower() == "playing"

@@ -1,4 +1,4 @@
-// Device-helper and configurator state: screen settings, radio favourites, system facts.
+// Device-helper and configurator state: screen settings, radio favorites, system facts.
 // Constraint: each backend fails on its own; a failure here only marks its own screen, never the app.
 
 import { effect, signal } from '@preact/signals';
@@ -93,7 +93,7 @@ async function saveStations(next: device.Station[]): Promise<void> {
     radioError.value = null;
   } catch {
     stations.value = before;
-    radioError.value = 'Favourites could not be saved.';
+    radioError.value = 'Favorites could not be saved.';
   }
 }
 

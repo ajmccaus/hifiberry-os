@@ -5,7 +5,7 @@ import { expect, isKiosk, mpc, resetAudio, test } from './fixtures.ts';
 test.beforeEach(resetAudio);
 
 test('kiosk starts on Now Playing and returns to it after 60 s idle while playing', async ({ page }, info) => {
-  test.skip(!isKiosk(info.project.name), 'kiosk-only behaviour');
+  test.skip(!isKiosk(info.project.name), 'kiosk-only behavior');
   await page.clock.install();
   await page.goto('/#/sources');
   await expect(page.locator('.now-playing.open')).toBeVisible();
@@ -33,7 +33,7 @@ test('kiosk starts on Now Playing and returns to it after 60 s idle while playin
 });
 
 test('a LAN browser starts on the screen it was opened on and never jumps to Now Playing', async ({ page }, info) => {
-  test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
+  test.skip(isKiosk(info.project.name), 'LAN-only behavior');
   await page.clock.install();
   mpc('-q', 'play', '1');
   await page.goto('/#/sources');

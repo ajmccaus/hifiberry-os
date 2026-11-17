@@ -1,5 +1,5 @@
-/* Overlays: reference ".ask" dialog (centred card wide, bottom sheet compact), password form,
-   Connecting and power HUDs. Constraint: z-order ask 9 < HUD 11; plexi colours from tokens. */
+/* Overlays: reference ".ask" dialog (centered card wide, bottom sheet compact), password form,
+   Connecting and power HUDs. Constraint: z-order ask 9 < HUD 11; plexi colors from tokens. */
 
 .ask-plexi {
   z-index: 9;

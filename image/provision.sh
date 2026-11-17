@@ -1,5 +1,5 @@
 #!/bin/bash
-# Customises Raspberry Pi OS into audio-os; runs inside the image chroot (started by build.sh) with
+# Customizes Raspberry Pi OS into audio-os; runs inside the image chroot (started by build.sh) with
 # its inputs in /run/audio-os-build. Order matters: /etc/hifiberry.user and the player user must
 # exist before hifiberry-shairport is installed; nothing here may rely on a running systemd.
 set -euo pipefail

@@ -206,7 +206,7 @@
 
 .np-progress > div {
   height: 100%;
-  background-color: var(--grey);
+  background-color: var(--gray);
   transition: width 1s linear;
 }
 

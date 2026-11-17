@@ -1,5 +1,5 @@
 // Permanently dark bottom bar: open-chevron, source icon, title/artist, mute, volume slider, volume icon.
-// Constraint: always dark in both colour schemes; in compact layout the title strip pops up above it on track change.
+// Constraint: always dark in both color schemes; in compact layout the title strip pops up above it on track change.
 
 import { useEffect, useState } from 'preact/hooks';
 import { sourceInfo } from '../lib/sources.ts';

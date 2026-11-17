@@ -1,4 +1,4 @@
-// Device helper client (/api/device/v1): screen, radio favourites, power, version.
+// Device helper client (/api/device/v1): screen, radio favorites, power, version.
 // Constraint: request/response shapes are the helper contract in FACTS "Device helper API".
 
 import { bool, isHttpUrl, isRecord, num, records, str } from './guards.ts';

@@ -74,7 +74,7 @@ test.describe('auth gateway', () => {
   test.use({ allowHttpStatus: [401] });
 
   test('LAN client: power needs a password - set it in the sheet, then the call is retried', async ({ page }, info) => {
-    test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
+    test.skip(isKiosk(info.project.name), 'LAN-only behavior');
     await openScreen(page, '#/system');
     await expect(page.getByRole('link', { name: 'Advanced settings' })).toHaveAttribute('href', '/services');
     await page.getByRole('button', { name: 'Power…' }).click();
@@ -89,7 +89,7 @@ test.describe('auth gateway', () => {
   });
 
   test('LAN client: with a password set, a wrong one is refused and the right one logs in', async ({ page }, info) => {
-    test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
+    test.skip(isKiosk(info.project.name), 'LAN-only behavior');
     await fetch(`${STUBS}/__test/auth`, { method: 'POST', body: JSON.stringify({ protection: 'risky', password: 'pw' }) });
     await openScreen(page, '#/system');
     await page.getByRole('button', { name: 'Power…' }).click();

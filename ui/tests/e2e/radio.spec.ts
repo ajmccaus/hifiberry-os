@@ -1,4 +1,4 @@
-// Radio favourites end to end: search on a phone (radio-browser.info intercepted, no internet),
+// Radio favorites end to end: search on a phone (radio-browser.info intercepted, no internet),
 // add -> the real helper stores it -> the kiosk lists it -> a tap sends upstream's ACR sequence.
 import { expect, HELPER, helperPut, isKiosk, KIOSK, LAN, mpc, resetAudio, test, watch } from './fixtures.ts';
 
@@ -11,7 +11,7 @@ const STATION = {
 
 test.afterEach(resetAudio);
 
-test('favourite added on a phone appears on the kiosk and plays with the ACR command sequence', async ({ browser }, info) => {
+test('favorite added on a phone appears on the kiosk and plays with the ACR command sequence', async ({ browser }, info) => {
   test.skip(!isKiosk(info.project.name), 'one run per engine: the test drives both a phone and the kiosk');
   await helperPut('/radio', { stations: [] });
 
@@ -28,7 +28,7 @@ test('favourite added on a phone appears on the kiosk and plays with the ACR com
   await phone.getByRole('searchbox', { name: 'Station name' }).fill('jazz');
   await phone.keyboard.press('Enter');
   await phone.getByRole('button', { name: 'Add Test Jazz' }).click();
-  await expect(phone.locator('.station.favourite')).toHaveText('Test Jazz');
+  await expect(phone.locator('.station.favorite')).toHaveText('Test Jazz');
   expect(searched.some((u) => u.includes('/json/stations/byname/jazz?hidebroken=true&limit=50'))).toBe(true);
   // The list updates before the helper's PUT returns, so poll the stored copy rather than race it.
   const stored = async () => ((await (await fetch(`${HELPER}/radio`)).json()) as { stations: unknown[] }).stations;
@@ -63,7 +63,7 @@ test('favourite added on a phone appears on the kiosk and plays with the ACR com
   await expect.poll(() => mpc('playlist')).toContain('127.0.0.1:9/jazz');
 
   await kiosk.getByRole('button', { name: 'Remove Test Jazz' }).click();
-  await expect(kiosk.locator('.station.favourite')).toHaveCount(0);
+  await expect(kiosk.locator('.station.favorite')).toHaveCount(0);
   kioskOk();
   await kioskCtx.close();
 });

@@ -1,4 +1,4 @@
-// Monochrome symbol SVGs (legacy MIT set + hbos-ui MIT set) as hashed asset URLs, coloured by CSS mask.
+// Monochrome symbol SVGs (legacy MIT set + hbos-ui MIT set) as hashed asset URLs, colored by CSS mask.
 // Constraint: icons are referenced by file name; an unknown name falls back to the generic input icon.
 
 const urls = import.meta.glob<string>('../assets/symbols/*.svg', { eager: true, query: '?url', import: 'default' });

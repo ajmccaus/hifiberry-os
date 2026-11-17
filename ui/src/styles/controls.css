@@ -101,7 +101,7 @@ img.item-icon {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 0.8em;
-  color: var(--grey);
+  color: var(--gray);
   text-align: right;
 }
 

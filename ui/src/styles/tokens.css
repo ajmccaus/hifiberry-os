@@ -1,5 +1,5 @@
 /* Design tokens, fonts and base reset. Values come from the legacy MIT stylesheet (beostyle2018.css).
-   Constraint: colours live only here as custom properties; dark mode is prefers-color-scheme.
+   Constraint: colors live only here as custom properties; dark mode is prefers-color-scheme.
    Weights follow the legacy metropolis.css mapping: 400 = Metropolis Medium, 500 = SemiBold. */
 
 @font-face {
@@ -29,7 +29,7 @@
   --button-active: silver;
   --line: rgba(0, 0, 0, 0.1);
   --line-opaque: rgb(230, 230, 230);
-  --grey: gray;
+  --gray: gray;
   --tab: silver;
   --plexi: rgba(230, 230, 230, 0.9);
   --pill-black-bg: #000;
@@ -73,7 +73,7 @@
     --button-active: #666;
     --line: rgba(255, 255, 255, 0.1);
     --line-opaque: rgb(71, 71, 71);
-    --grey: rgba(255, 255, 255, 0.5);
+    --gray: rgba(255, 255, 255, 0.5);
     --tab: #666;
     --plexi: rgba(0, 0, 0, 0.9);
     --pill-black-bg: #ddd;
@@ -164,7 +164,7 @@ h2 {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--uppercase-spacing);
-  color: var(--grey);
+  color: var(--gray);
   margin: 20px 0 10px;
 }
 
@@ -196,7 +196,7 @@ hr {
   margin: 10px 0;
 }
 
-/* Mask-coloured monochrome symbol: follows the text colour in both schemes. */
+/* Mask-colored monochrome symbol: follows the text color in both schemes. */
 .sym {
   display: block;
   flex-shrink: 0;

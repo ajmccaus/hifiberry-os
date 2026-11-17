@@ -1,4 +1,4 @@
-// Small presentational building blocks: mask-coloured icon, slider, segmented control, menu row.
+// Small presentational building blocks: mask-colored icon, slider, segmented control, menu row.
 // Constraint: no app state here; everything arrives through props (the slider is pointer-event driven).
 
 import type { ComponentChildren } from 'preact';

@@ -1,6 +1,6 @@
 #!/bin/sh
 # audio-os postrm: drop unit enablement and reload nginx without our locations. Users and
-# /var/lib/audio-os (radio favourites) are kept unless purged.
+# /var/lib/audio-os (radio favorites) are kept unless purged.
 set -e
 
 UNITS="audio-os-firewall.service audio-os-helper.service touch-timeout.service kiosk.service"

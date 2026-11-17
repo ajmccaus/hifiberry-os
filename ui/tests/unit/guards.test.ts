@@ -22,7 +22,7 @@ test('songs keep only well-typed fields; cover art falls back to radio logo meta
   assert.equal(parseSong([]), null);
 });
 
-test('events: lowercase-normalised states, volume without player, unknown types dropped', () => {
+test('events: lowercase-normalized states, volume without player, unknown types dropped', () => {
   assert.deepEqual(parseEvent({ type: 'state_changed', player_name: 'mpd', state: 'Playing' }), { type: 'state_changed', player: 'mpd', state: 'playing' });
   assert.deepEqual(parseEvent({ type: 'state_changed', player_name: 'mpd', state: 'weird' }), { type: 'state_changed', player: 'mpd', state: 'unknown' });
   assert.deepEqual(parseEvent({ type: 'volume_changed', percentage: 12.5, source: { player_name: null } }), { type: 'volume_changed', percentage: 12.5 });

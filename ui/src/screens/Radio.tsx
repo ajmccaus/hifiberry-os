@@ -1,4 +1,4 @@
-// Radio: favourite stations (shared by all browsers via the helper) and radio-browser.info search.
+// Radio: favorite stations (shared by all browsers via the helper) and radio-browser.info search.
 // Constraint: the kiosk has no keyboard, so search is offered only on phones/desktops; station
 // names and logos are untrusted (rendered as text; logos only from http(s) URLs).
 
@@ -31,7 +31,7 @@ function StationLogo({ station }: { station: Station }) {
   );
 }
 
-function Search({ favourites }: { favourites: Station[] }) {
+function Search({ favorites }: { favorites: Station[] }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Station[] | null>(null);
   const [state, setState] = useState<'idle' | 'busy' | 'error'>('idle');
@@ -65,7 +65,7 @@ function Search({ favourites }: { favourites: Station[] }) {
       {state === 'error' && <p>The station directory could not be reached.</p>}
       {state === 'idle' && results?.length === 0 && <p>No stations found.</p>}
       {results?.map((s) => {
-        const added = favourites.some((f) => f.url === s.url);
+        const added = favorites.some((f) => f.url === s.url);
         return (
           <div class="item with-icon station result" key={s.id}>
             <StationLogo station={s} />
@@ -90,16 +90,16 @@ export function Radio() {
     return () => window.clearInterval(t);
   }, []);
   const list = stations.value;
-  const favourites = list.status === 'ready' ? list.value : [];
+  const favorites = list.status === 'ready' ? list.value : [];
   const playingUrl = model.value.active === RADIO_PLAYER ? song.value?.streamUrl : undefined;
   const address = deviceAddress();
   return (
     <Frame id="radio" title="Radio">
-      <h2>Favourites</h2>
-      {list.status === 'error' && <p>Favourites are not available right now.</p>}
-      {list.status === 'ready' && favourites.length === 0 && <p>No favourite stations yet.</p>}
-      {favourites.map((s) => (
-        <div class="item with-icon station favourite" key={s.id}>
+      <h2>Favorites</h2>
+      {list.status === 'error' && <p>Favorites are not available right now.</p>}
+      {list.status === 'ready' && favorites.length === 0 && <p>No favorite stations yet.</p>}
+      {favorites.map((s) => (
+        <div class="item with-icon station favorite" key={s.id}>
           <button type="button" class="station-play" onClick={() => void playStation(s)} aria-label={`Play ${s.name}`}>
             <StationLogo station={s} />
             <span class="item-label">{s.name}</span>
@@ -119,7 +119,7 @@ export function Radio() {
           the same network.
         </p>
       ) : (
-        <Search favourites={favourites} />
+        <Search favorites={favorites} />
       )}
     </Frame>
   );

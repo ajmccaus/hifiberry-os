@@ -1,5 +1,5 @@
 # Checks every part, then builds, boot-tests and publishes the audio-os SD image: a prerelease for a
-# branch push, a release named after the tag for a v* tag (the tag is the version, v0.1 -> 0.1).
+# branch push, a release named after the tag for a v* tag (the tag is the version, v0.1.0 -> 0.1.0).
 # The image job is the only one with write access; third-party actions are official actions/* only.
 name: image
 

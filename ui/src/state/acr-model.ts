@@ -101,9 +101,9 @@ export const activeSong = (m: AcrModel): Song | null => (m.active ? (m.songs[m.a
 export interface Transport {
   previous: boolean;
   next: boolean;
-  /** What the centre button shows, null when the player cannot do it now. */
+  /** What the center button shows, null when the player cannot do it now. */
   toggle: 'play' | 'pause' | null;
-  /** ACR command the centre button sends. */
+  /** ACR command the center button sends. */
   toggleCommand: 'play' | 'pause' | 'playpause' | null;
 }
 

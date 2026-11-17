@@ -22,7 +22,7 @@ function Artwork({ url, placeholder }: { url: string | null; placeholder: string
   const [layers, setLayers] = useState<Layer[]>([]);
   const seq = useRef(0);
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     const retire = () => setLayers((ls) => ls.map((l) => ({ ...l, out: true })));
     if (!url) {
       retire();
@@ -30,15 +30,15 @@ function Artwork({ url, placeholder }: { url: string | null; placeholder: string
     }
     const img = new Image();
     img.onload = () => {
-      if (cancelled) return;
+      if (canceled) return;
       seq.current += 1;
       const key = seq.current;
       setLayers((ls) => [...ls, { url, key, out: false }]);
     };
-    img.onerror = () => !cancelled && retire();
+    img.onerror = () => !canceled && retire();
     img.src = url;
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [url]);
   // A finished fade-in drops the images below it; a finished fade-out removes itself.
