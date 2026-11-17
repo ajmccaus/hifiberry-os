@@ -1,0 +1,17 @@
+name: image
+on:
+  push:
+    branches: [master, "claude/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - run: |
+          uname -m; nproc; free -g; df -h /
+          for u in https://deb.debian.org/debian/dists/trixie/Release https://archive.raspberrypi.com/debian/dists/trixie/Release https://downloads.raspberrypi.com/raspios_lite_arm64/images/ https://debianrepo.hifiberry.com/; do
+            printf '%s -> ' "$u"; curl -sS -o /dev/null -m 20 -w '%{http_code}\n' "$u" || true
+          done
+          sudo losetup -f
