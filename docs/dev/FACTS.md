@@ -169,9 +169,9 @@ Device helper API (`audio-os-helper`, Python stdlib, 127.0.0.1:1090, runs as use
   present, it must match the request `Host` (blocks cross-site form posts); else 403.
 - Errors: JSON `{"error":"..."}` with 400/403/404/405/413/500. Bodies capped at 64 KiB.
 - State: /var/lib/audio-os/{screen.json,radio.json} (atomic writes). The helper renders
-  /var/lib/audio-os/touch-timeout.env (`TOUCH_TIMEOUT_ARGS=-b <raw> -t <s>`), which a drop-in for
-  touch-timeout.service reads (`EnvironmentFile=-...`, `ExecStart=` reset, then
-  `ExecStart=/usr/bin/touch-timeout $TOUCH_TIMEOUT_ARGS`), then `systemctl try-restart touch-timeout.service`.
+  /var/lib/audio-os/touch-timeout.env (`TOUCH_TIMEOUT_ARGS=-b <raw> -t <s>`), which our
+  touch-timeout.service reads in the unit itself (`EnvironmentFile=-...`,
+  `ExecStart=/usr/bin/touch-timeout $TOUCH_TIMEOUT_ARGS`; no drop-in), then `systemctl try-restart touch-timeout.service`.
   Brightness percent -> raw: `max(15, round(pct*top/100))` with top = min(max_brightness, 255).
 - Wake on play: the helper polls ACR `GET http://127.0.0.1:1080/api/now-playing` every 2 s and, on
   a transition into playing, sends SIGUSR1 (`systemctl kill -s USR1 touch-timeout.service`).
@@ -184,4 +184,5 @@ Device helper API (`audio-os-helper`, Python stdlib, 127.0.0.1:1090, runs as use
 Kiosk: systemd unit `kiosk.service` (user `kiosk`, own logind session on tty1) running
 `cage -- cog --platform=wl --scale=1 http://localhost/`; starts only when a display is connected;
 restarts on failure; optional rotation from /boot/firmware/audio-os.conf (`SCREEN_ROTATE=0|90|180|270`,
-applied with wlr-randr inside cage).
+applied by `/usr/lib/audio-os/kiosk-rotation`: a libinput calibration udev rule for touch, written as root
+before cage starts, and wlr-randr for the output inside cage).

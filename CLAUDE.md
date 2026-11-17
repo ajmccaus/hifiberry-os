@@ -16,7 +16,7 @@ A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen a
 Shell lint, from the repo root:
 
 ```
-mapfile -t b < <(git ls-files '*.sh' os/rootfs/usr/lib/audio-os/kiosk-rotation os/rootfs/usr/lib/audio-os/kiosk-session)
+mapfile -t b < <(git ls-files 'os/*.sh' 'image/*.sh' 'ui/*.sh' 'helper/*.sh' os/rootfs/usr/lib/audio-os/kiosk-rotation os/rootfs/usr/lib/audio-os/kiosk-session)
 s=(os/DEBIAN/postinst os/DEBIAN/prerm os/DEBIAN/postrm)
 for f in "${b[@]}"; do bash -n "$f"; done; for f in "${s[@]}"; do sh -n "$f"; done
 shellcheck "${b[@]}" "${s[@]}"

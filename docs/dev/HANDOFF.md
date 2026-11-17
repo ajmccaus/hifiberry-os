@@ -7,7 +7,7 @@ Working state for whoever (a Claude session or the owner) continues the build. U
 A flashable SD image for a Raspberry Pi 4 (2 GB) + official 7" touchscreen + HiFiBerry Amp2:
 upstream HiFiBerry NG audio stack on Raspberry Pi OS Lite (Debian 13), with our own minimal
 B&O-style web UI as the front door. Done = CI publishes an image that passes `image/verify.sh`,
-and the owner's device test (docs/device-test.md, still to be written) passes.
+and the owner's device test (docs/device-test.md) passes.
 
 ## Where everything is
 - `docs/dev/FACTS.md` — verified facts about the base image and upstream packages, the repo
@@ -32,8 +32,8 @@ and the owner's device test (docs/device-test.md, still to be written) passes.
 |---|---|
 | `helper/` | Done, reviewed, 32 tests green. |
 | `ui/` | DONE and manager-verified (commit dc952ebc): typecheck clean, 26 unit tests, Playwright 56 passed / 12 skipped on Chromium + WebKit, screenshots compared with the reference. |
-| `os/`, `image/`, workflow | Builder (stopped at the pause, no hand-back report) built the .deb and ran `image/build.sh` locally four times under emulation. Run 2 failed: `hifiberry-bluetooth` postinst calls live systemctl in the chroot (provision.sh has a systemctl shim for this — check it covers that call). Run 3 failed: our postinst ran `nginx -t`, which cannot open [::]:80 in the build chroot; postinst now runs it on a live system only and `verify.sh` runs `nginx -t` in the boot test instead. Run 4 was killed by the pause mid-upgrade (its initramfs error is an artifact of the kill, not a finding). NOT yet done: a complete local build, `verify.sh` part (a), manager review of os/ image/ workflow, any CI run. |
-| Docs | README is a stub; device-test.md and a new CLAUDE.md not written. |
+| `os/`, `image/`, workflow | Builder (stopped at the pause, no hand-back report) built the .deb and ran `image/build.sh` locally four times under emulation. Run 2 failed: `hifiberry-bluetooth` postinst calls live systemctl in the chroot (provision.sh sets `SYSTEMD_OFFLINE=1`; whether that covers this call is for CI to show). Run 3 failed: our postinst ran `nginx -t`, which cannot open [::]:80 in the build chroot; postinst now runs it on a live system only and `verify.sh` runs `nginx -t` in the boot test instead. Run 4 was killed by the pause mid-upgrade (its initramfs error is an artifact of the kill, not a finding). NOT yet done: a complete local build, `verify.sh` part (a), manager review of os/ image/ workflow, any CI run. |
+| Docs | README, CLAUDE.md and docs/device-test.md written and committed (b6cb3c21). Still to reconcile with the final image: device-test.md commands that may not exist on the image (`vcgencmd`, `libinput`, `bluetoothctl`, `nmap`, `nqptp.service`), README journal/watchdog claims. README firewall list checked against `firewall.nft`: matches. |
 | Branch cleanup | Not done: `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `claude/adopt-one21tools`, `hbosng` still exist. Fast-forwarding `master` to the product branch is also pending. |
 
 ## Next steps, in order
