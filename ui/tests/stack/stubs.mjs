@@ -1,5 +1,6 @@
-// Test stubs for what cannot run here: configurator GETs (shapes from configurator 2.19 source) and
-// hifiberry-auth (verify/set-password/login/csrf ported from hifiberry_auth/server.py + manifests.py).
+// Test stubs for what cannot run here: configurator GETs (shapes from configurator 2.19 source),
+// hifiberry-auth (verify/set-password/login/csrf ported from hifiberry_auth/server.py + manifests.py)
+// and a radio stream MPD can open (/stream/jazz.mp3, the file named by STUBS_STREAM_FILE).
 // Constraint: same decision matrix as the real service; loopback only; test controls under /__test/.
 
 import { randomBytes } from 'node:crypto';
@@ -9,6 +10,7 @@ import { join } from 'node:path';
 
 const PORT = Number(process.env.STUBS_PORT ?? 1191);
 const AUTH_D = new URL('./auth.d/', import.meta.url).pathname;
+const STREAM_FILE = process.env.STUBS_STREAM_FILE;
 
 /* ---------- tier map (manifests.py) ---------- */
 
@@ -157,6 +159,11 @@ createServer(async (req, res) => {
     if (path === '/api/v1/systeminfo') return json(res, 200, systeminfo);
     if (path === '/api/v1/network') return json(res, 200, network);
     return json(res, 404, { status: 'error', message: 'not found' });
+  }
+  if (path === '/stream/jazz.mp3' && STREAM_FILE) {
+    const audio = readFileSync(STREAM_FILE);
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': audio.length });
+    return res.end(req.method === 'HEAD' ? undefined : audio);
   }
   if (path === '/__test/auth' && req.method === 'POST') {
     const body = await readBody(req);

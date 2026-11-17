@@ -1,6 +1,6 @@
 #!/bin/bash
 # E2E stack for the UI: real ACR 0.25 + MPD (via $ACR_SCRIPT), the real device helper with a fake
-# backlight/systemctl, the configurator+auth stub, and two vite-preview gateways (nginx layout):
+# backlight/systemctl, the configurator+auth+radio-stream stub, and two vite-preview gateways (nginx layout):
 #   kiosk http://127.0.0.1:5180/   LAN client http://127.0.0.2:5180/
 # Usage: stack.sh start|stop|status|acr-down|acr-up   Constraint: idempotent; binds loopback only.
 set -euo pipefail
@@ -8,8 +8,8 @@ set -euo pipefail
 UI="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$UI/.." && pwd)"
 RUN="$UI/tests/.stack"
-# run-acr.sh (from the ACR contract work) builds the MPD fixture and starts ACR on 127.0.0.1:1080.
-ACR_SCRIPT="${ACR_SCRIPT:-/tmp/claude-0/-home-user-hifiberry-os/44bcaa47-cf01-555d-b7c0-a66b4b33ff65/scratchpad/ref/run-acr.sh}"
+# run-acr.sh builds the MPD fixture and starts ACR on 127.0.0.1:1080 (it needs a built ACR in docs/dev/tools/acr).
+ACR_SCRIPT="${ACR_SCRIPT:-$REPO/docs/dev/tools/run-acr.sh}"
 ACR_PID="$(dirname "$ACR_SCRIPT")/run/acr.pid"
 
 alive() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
@@ -44,6 +44,9 @@ start() {
   echo 150 > "$RUN/backlight/10-0045/brightness"
   echo "0.1.0-test" > "$RUN/version"
   touch "$RUN/systemctl.log"
+  # A radio station MPD can really open: an unreachable URL makes MPD's "play" fail or succeed by timing.
+  [ -s "$RUN/radio.mp3" ] || ffmpeg -loglevel error -y -f lavfi -i "anullsrc=r=44100:cl=stereo" -t 120 \
+    -c:a libmp3lame -b:a 64k "$RUN/radio.mp3"
 
   "$ACR_SCRIPT" start > "$RUN/acr-start.log"
 
@@ -51,7 +54,7 @@ start() {
     AUDIO_OS_SYSTEMCTL="$UI/tests/stack/fake-systemctl" FAKE_SYSTEMCTL_LOG="$RUN/systemctl.log" \
     AUDIO_OS_ACR_URL=http://127.0.0.1:1080 AUDIO_OS_PORT=1190 AUDIO_OS_VERSION_FILE="$RUN/version" \
     python3 "$REPO/helper/audio_os_helper.py"
-  spawn stubs node "$UI/tests/stack/stubs.mjs"
+  spawn stubs env STUBS_STREAM_FILE="$RUN/radio.mp3" node "$UI/tests/stack/stubs.mjs"
   wait_http http://127.0.0.1:1190/api/device/v1/info
   wait_http http://127.0.0.1:1191/api/v1/network
 
