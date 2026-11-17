@@ -120,6 +120,11 @@ for f in /usr/lib/audio-os/audio_os_helper.py /usr/bin/touch-timeout /usr/share/
     check "file $f" test -s "$root$f"
 done
 
+# docs/device-test.md tells the owner to run these on the device; keep the list in step with it.
+for tool in aplay amixer bluetoothctl curl findmnt ip journalctl nft pgrep ss sudo; do
+    check "device-test tool: $tool" bash -c "test -x '$root/usr/bin/$tool' || test -x '$root/usr/sbin/$tool'"
+done
+
 if [ -n "$img" ]; then
     disk_id=$(sfdisk --disk-id "$img" | sed 's/^0x//')
     check "fstab boot PARTUUID matches MBR" grep -q "^PARTUUID=$disk_id-01[[:space:]]" "$root/etc/fstab"

@@ -62,7 +62,7 @@ grep -x connected /sys/class/drm/card*-*/status
 ```
 
 2. Rotation. Mount the card on a computer, set `SCREEN_ROTATE=180` in `audio-os.conf`, put it back, boot. Expected: picture upside down relative to before, and a touch on a button lands on that button. Repeat for 90 and 270 if you wish; set it back to your preferred value. Evidence: `journalctl -b -u kiosk.service` and `cat /run/udev/rules.d/90-audio-os-touch-rotation.rules`.
-3. Touch. Tap the tab bar and the sources, drag the volume slider. Expected: every tap registers where you touch, with no ghost touches. Evidence: `libinput list-devices` (if installed) and the kiosk journal.
+3. Touch. Tap the tab bar and the sources, drag the volume slider. Expected: every tap registers where you touch, with no ghost touches. Evidence: the kiosk journal, and `grep -A4 -i -E 'ft5|touch' /proc/bus/input/devices` (the image has no `libinput` command-line tool).
 4. Dim and blank. On the Screen page set the off-timeout to 1 min. Expected: the screen dims, then turns off after about a minute without touch, and a touch brings it back. Also expected: starting playback from a phone wakes it. Change brightness; expected: the panel changes. Evidence:
 
 ```
@@ -88,7 +88,7 @@ journalctl -b -u volume-restore.service -u audiocontrol.service --no-pager
 2. Volume. Drag the slider on the kiosk, then on the phone. Expected: sound level follows, the slider on the other device follows, and the value never jumps to 0 by itself. Mixer control should be named "Digital".
 3. Internet radio. On the phone, open Radio, search a station, add it as a favourite; on the kiosk, tap it. Expected: it plays, and the favourite appears on both. Evidence: `journalctl -b -u audiocontrol.service --no-pager` and `sudo -u player env XDG_RUNTIME_DIR=/run/user/$(id -u player) systemctl --user status mpd.service --no-pager`.
 4. Spotify Connect. Open the Spotify app on the phone, pick the speaker from the device list, play. Expected: sound, and title, artist and artwork on the kiosk. Evidence: `journalctl -b _UID=$(id -u player) | grep -i librespot`.
-5. AirPlay. From an iPhone or Mac pick the speaker and play. Expected: sound, metadata on the kiosk. Evidence: `journalctl -b _UID=$(id -u player) | grep -i -E 'shairport|nqptp'`; `systemctl status nqptp.service --no-pager`.
+5. AirPlay. From an iPhone or Mac pick the speaker and play. Expected: sound, metadata on the kiosk. Evidence: `journalctl -b _UID=$(id -u player) | grep -i -E 'shairport|nqptp'`; `sudo -u player env XDG_RUNTIME_DIR=/run/user/$(id -u player) systemctl --user status shairport.service --no-pager`; `pgrep -a nqptp` (AirPlay 2 timing needs an nqptp process; how the image starts it is not verified).
 6. Bluetooth. On the phone, pair with the speaker, play. Expected: pairing succeeds, sound plays, metadata shows. Also note: is the speaker visible in a phone's Bluetooth scan at all times, even when nobody is pairing? Evidence: `systemctl status bluetooth.service hifiberry-bluetooth.service --no-pager`, `journalctl -b -u bluetooth -u hifiberry-bluetooth --no-pager`, `bluetoothctl show`.
 7. Switching between sources. Expected: the Sources list marks the playing one and the Now Playing page follows.
 
@@ -114,7 +114,7 @@ Evidence: `journalctl -b -u hifiberry-auth.service -u audio-os-helper.service --
 1. From another machine: `nmap -sS -sU -p 22,80,1080,1081,1089,1090,2716,6600,5000,7000,319,320,5353 hifiberry.local` (UDP needs root). Expected: only 80 open (and 22 only if you enabled SSH); 5000, 7000, 319-320 and 5353 may show as open or filtered by design. 1080, 1081, 1089, 1090, 2716 and 6600 must not be reachable.
 2. On the device: `ss -Hlntu`. Expected: apart from the product's own ports, only loopback addresses listen. Save the output.
 3. `ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no <user>@hifiberry.local`. Expected: refused.
-4. `sudo passwd -S root pi player kiosk audio-os`. Expected: each shows `L` (locked).
+4. `sudo passwd -S -a | awk '$2 != "L"'`. Expected: no output (every account, including the one you created in `user-data`, has a locked password).
 5. `sudo nft list table inet audio_os` and `systemctl status audio-os-firewall.service --no-pager`. Expected: the table exists, input policy `drop`.
 6. `systemctl status nftables.service --no-pager`. Expected: disabled.
 7. `ls /etc/ssh/ssh_host_*`. Expected: host keys exist (generated on first boot).
