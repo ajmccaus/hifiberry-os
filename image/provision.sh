@@ -10,6 +10,9 @@ PLAYER=player
 PLAYER_GROUPS="audio video render input gpio i2c spi plugdev netdev"
 FIRST_BOOT_VOLUME=20
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 GNUPGHOME=$IN/gnupg
+# systemctl treats live-only verbs (daemon-reload, start) as no-ops; hifiberry-bluetooth's postinst
+# calls them unguarded, and chroot detection alone is not reliable under qemu-user.
+export SYSTEMD_OFFLINE=1
 
 step() { echo "=== provision: $*"; }
 die() { echo "provision: $*" >&2; exit 1; }
