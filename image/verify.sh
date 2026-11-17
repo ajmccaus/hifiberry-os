@@ -16,6 +16,7 @@ CONTAINER_ONLY_UNITS="systemd-remount-fs.service systemd-firstboot.service rtkit
 
 die() { echo "verify: $*" >&2; exit 1; }
 failures=0
+exec 3>&2   # diagnostics from inside a check(), which silences the checked command
 pass() { echo "  ok    $1"; }
 fail() { echo "  FAIL  $1" >&2; failures=$((failures + 1)); }
 check() { local what=$1; shift; if "$@" >/dev/null 2>&1; then pass "$what"; else fail "$what"; fi; }
@@ -222,12 +223,27 @@ pk_allowed() {
     in_box pkcheck --action-id "$action" --process "$pk_pid" "${details[@]}"
 }
 # pk_denied: pkcheck said "not authorized" (1) or "needs authentication" (2); errors (127) do not count.
-pk_denied() { local rc=0; pk_allowed "$@" || rc=$?; [ "$rc" = 1 ] || [ "$rc" = 2 ]; }
+pk_denied() {
+    local rc=0 out
+    out=$(pk_allowed "$@" 2>&1) || rc=$?
+    [ "$rc" = 1 ] || [ "$rc" = 2 ] || { echo "        pkcheck $1: exit $rc: $out" >&3; return 1; }
+}
 manage() { pk_allowed org.freedesktop.systemd1.manage-units unit "$1" verb "$2"; }
 manage_denied() { pk_denied org.freedesktop.systemd1.manage-units unit "$1" verb "$2"; }
 not() { ! "$@"; }
 # systemctl refused by polkit (not failing for some other reason).
-systemctl_denied() { as_helper systemctl "$@" 2>&1 | grep -qiE 'access denied|authentication required'; }
+systemctl_denied() {
+    local rc=0 out
+    out=$(as_helper systemctl "$@" 2>&1) || rc=$?
+    if [ "$rc" != 0 ] && grep -qiE 'access denied|authentication required' <<< "$out"; then return 0; fi
+    echo "        systemctl $*: exit $rc: $out" >&3
+    return 1
+}
+systemctl_allowed() {
+    local rc=0 out
+    out=$(as_helper systemctl "$@" 2>&1) || rc=$?
+    [ "$rc" = 0 ] || { echo "        systemctl $*: exit $rc: $out" >&3; return 1; }
+}
 
 index=$(in_box curl -fsS http://localhost/ || true)
 check "/ serves the audio-os UI" grep -q '<meta name="audio-os-ui"' <<< "$index"
@@ -241,7 +257,7 @@ check "loopback POST /power with a bogus action reaches the helper (400, got $po
 check "/services still serves upstream's UI" upstream_ui
 
 check "polkit subject process running" test -n "$pk_pid" -a "$pk_pid" != 0
-check "polkit: audio-os may try-restart touch-timeout" as_helper systemctl try-restart touch-timeout.service
+check "polkit: audio-os may try-restart touch-timeout" systemctl_allowed try-restart touch-timeout.service
 check "polkit: audio-os may not try-restart nginx" systemctl_denied try-restart nginx.service
 check "polkit: audio-os may kill touch-timeout" manage touch-timeout.service kill
 check "polkit: audio-os may not restart touch-timeout" manage_denied touch-timeout.service restart
