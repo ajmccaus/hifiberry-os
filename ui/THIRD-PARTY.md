@@ -1,13 +1,14 @@
 # Third-party material in the audio-os web UI
 
-The packaged UI (`dist/`) must be shipped together with this file (e.g. in `/usr/share/doc/audio-os/`).
+The packaged UI (`dist/`) must be shipped together with this file. The `audio-os` package installs it as
+`/usr/share/doc/audio-os/THIRD-PARTY.md`.
 
 ## Beocreate 2 client (MIT)
 
 Source: the Beocreate 2 server/client tree (`beo-views/default/beostyle2018.css`,
 `beo-extensions/now-playing/now-playing.css`, `beo-extensions/product-information/product-information.css`,
 `beo-system/common/symbols-*` and extension symbol folders).
-Used: layout values (sizes, colours, spacing, easing, breakpoints) re-expressed in `src/styles/`, and the
+Used: layout values (sizes, colors, spacing, easing, breakpoints) re-expressed in `src/styles/`, and the
 monochrome symbol SVGs in `src/assets/symbols/` (unchanged files). No logos, product images or product names.
 
 ```
@@ -38,7 +39,7 @@ SOFTWARE.
 
 Files: `src/assets/fonts/Metropolis-Medium.otf`, `Metropolis-SemiBold.otf` (byte-identical to the copies in
 the Beocreate 2 tree; "Copyright (c) 2016 by Chris Simpson", upstream https://github.com/chrismsimpson/Metropolis).
-Licence: Unlicense (public-domain dedication), attribution Chris Simpson — as recorded by Fontsource
+License: Unlicense (public-domain dedication), attribution Chris Simpson — as recorded by Fontsource
 (`@fontsource/metropolis` 5.3.0 `metadata.json`: license type `Unlicense`, source https://github.com/dw5/Metropolis).
-The font files themselves carry no licence string; the upstream repository could not be fetched from the
-build environment to read its licence file directly.
+The font files themselves carry no license string. The license file in the upstream repository has not been
+read, so the Unlicense is not confirmed at the source.

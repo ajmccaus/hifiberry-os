@@ -7,3 +7,5 @@ __pycache__/
 *.sha256
 test-results/
 playwright-report/
+docs/dev/tools/acr/
+docs/dev/tools/run/

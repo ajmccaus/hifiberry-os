@@ -1,5 +1,5 @@
 // Unit tests for the pure ACR event reducer and snapshot/rebase logic.
-// Constraint: event shapes are those ACR 0.25 sends (scratchpad ACR-CONTRACT §5).
+// Constraint: event shapes are those ACR 0.25 sends (docs/dev/ACR-CONTRACT.md §5).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseEvent, type NowPlaying, type PlayerInfo } from '../../src/api/acr.ts';

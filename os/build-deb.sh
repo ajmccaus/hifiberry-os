@@ -34,6 +34,7 @@ sed "s/@VERSION@/$version/" "$here/DEBIAN/control" > "$stage/DEBIAN/control"
 cp -a "$ui_dist/." "$stage/usr/share/audio-os/ui/"
 install -m 0644 "$helper" "$stage/usr/lib/audio-os/audio_os_helper.py"
 echo "$version" > "$stage/usr/share/audio-os/version"
+install -m 0644 "$repo/ui/THIRD-PARTY.md" "$stage/usr/share/doc/audio-os/THIRD-PARTY.md"
 
 git clone --quiet "$TOUCH_TIMEOUT_URL" "$work/touch-timeout"
 git -C "$work/touch-timeout" checkout --quiet --detach "$TOUCH_TIMEOUT_COMMIT"

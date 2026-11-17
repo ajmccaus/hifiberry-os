@@ -1,6 +1,6 @@
 # audio-os
 
-A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen and a HiFiBerry Amp2: Raspberry Pi OS Lite arm64 (Debian 13) plus HiFiBerry's upstream apt packages plus our own `audio-os` package (web UI, device helper, kiosk, firewall, hardening). CI builds the SD image and publishes it: the prerelease `dev` from the working branch, a release named after the tag for a `v*` tag. The old buildroot-based HiFiBerryOS is retired; nothing here refers to it.
+A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen and a HiFiBerry Amp2: Raspberry Pi OS Lite arm64 (Debian 13) plus HiFiBerry's upstream apt packages plus our own `audio-os` package (web UI, device helper, kiosk, firewall, hardening). CI builds and boot-tests the SD image and publishes it: the rolling prerelease `dev` from a `claude/**` branch, a prerelease named `build-<date>-<commit>` from `master`, and a release named after the tag for a `v*` tag (`v0.1.0` publishes `audio-os-0.1.0.img.xz`).
 
 ## Layout
 
@@ -9,7 +9,7 @@ A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen a
 - `os/` the `audio-os` .deb: `os/rootfs/` (files as installed), `os/DEBIAN/`, `os/build-deb.sh`.
 - `image/` `build.sh` (host side), `provision.sh` (runs in the image chroot), `verify.sh`, `boot/` (templates copied to the boot partition).
 - `.github/workflows/image.yml` the only CI workflow.
-- `docs/dev/` developer notes: `FACTS.md`, `HANDOFF.md`, `ACR-CONTRACT.md`, `LOOK.md`, the two briefs. `docs/device-test.md` is the owner's on-device checklist.
+- `docs/dev/` developer notes (`FACTS.md`, `HANDOFF.md`, `ACR-CONTRACT.md`, `LOOK.md`), reference screenshots and dev tools. `docs/device-test.md` is the owner's on-device checklist.
 
 ## Checks (these are what CI runs)
 
@@ -28,7 +28,7 @@ Helper tests, from the repo root:
 python3 -m unittest discover -s helper -v
 ```
 
-UI, in `ui/` (Node 22; the end-to-end tests need `npx playwright install --with-deps chromium webkit` once):
+UI, in `ui/` (Node 22). The end-to-end tests need `npx playwright install --with-deps chromium webkit` once, plus `mpd`, `mpc`, `ffmpeg`, and a built ACR checkout in `docs/dev/tools/acr`, which `docs/dev/tools/run-acr.sh` starts (`ACR_SCRIPT` names another launcher) (the `ui-e2e` job in the workflow shows the steps):
 
 ```
 npm ci
@@ -52,8 +52,8 @@ sudo image/verify.sh out/audio-os-<version>.img.xz
 - Never weaken a test, assertion or check to get green. Fix the cause, or report the failure with its output.
 - No default credentials or secrets in the image. Every account stays locked; SSH stays off unless the owner enables it through cloud-init `user-data`, key-only.
 - The image is built and boot-tested in CI on `ubuntu-24.04-arm`, not locally under emulation.
-- Keep the UI dependency-light: the runtime dependencies are `preact` and `@preact/signals` only, with the JS budget in `docs/dev/brief-ui.md`.
+- Keep the UI dependency-light: the runtime dependencies are `preact` and `@preact/signals` only, and the built JavaScript stays at or under 60 kB gzip.
 - Shell scripts: `#!/bin/bash`, `set -euo pipefail`, shellcheck clean. Each file starts with a short header stating what it is and the one constraint not to break.
 - Daemons bind loopback; nginx on port 80 is the only web entry. Subprocess calls use argument lists, never a shell.
 - Do not use Bang & Olufsen or "Beo" names in identifiers or the UI; the third-party notices stay in `ui/THIRD-PARTY.md`.
-- Nothing has been tested on a real Pi. Do not claim hardware behaviour in docs; list it in `docs/device-test.md` under "Not verified before hardware".
+- Nothing has been tested on a real Pi. Do not claim hardware behavior in docs; list it in `docs/device-test.md` under "Not verified before hardware".

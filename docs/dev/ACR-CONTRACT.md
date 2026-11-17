@@ -1,20 +1,20 @@
 # ACR (audiocontrol) 0.25.0 — API contract for a browser UI
 
 Verified against source at `acr` commit 47f2b51 (`Cargo.toml:3` version = "0.25.0") **and** against a live instance
-(real MPD 0.23.5 backing player, `run-acr.sh`). Payload examples marked (live) are captured responses; raw captures are in `ref/cap/`.
+(real MPD 0.23.5 backing player, started with `docs/dev/tools/run-acr.sh`). Payload examples marked (live) are captured responses.
 Paths below are relative to the daemon root; all REST routes are under `/api` (`crates/acr-types/src/lib.rs:30`).
-File refs are relative to the acr clone. "doc ≠ src" marks a disagreement between `doc/*.md` and the code.
+File refs are relative to the acr source tree. "doc ≠ src" marks a disagreement between `doc/*.md` and the code.
 
 ## 0. Deployment facts that shape the UI
 
 | Fact | Detail |
 |---|---|
-| Listen address/port | `services.webserver.{enable,host,port}` in `audiocontrol.json`; defaults host `0.0.0.0`, port `1080` (`src/api/server.rs:312-319`). Shipped config binds `0.0.0.0` (`configs/audiocontrol.json`); bind `127.0.0.1` for a dev backend. Config file: `-c <path>` (`src/main.rs:798`). |
-| Two daemons in production | Player daemon (1080): players, library, volume, imagecache, WebSocket, settings. Metadata daemon (1084): `/api/coverart/*`, `/api/favourites/*`, lastfm, audiodb, artist images. The shipped deb builds `audiocontrol` with `--no-default-features` (`debian/rules:83-84`) so **1080 alone does not serve favourites or coverart**. In a default `cargo build` (what `run-acr.sh` uses) the metadata routes are mounted in-process on 1080 as well. nginx maps both under `/api/audiocontrol/` (see `doc/api.md:116-130`). Write the UI against a configurable base URL and don't hard-code ports. |
+| Listen address/port | `services.webserver.{enable,host,port}` in `audiocontrol.json`; defaults host `0.0.0.0`, port `1080` (`src/api/server.rs:312-319`). Shipped config binds `0.0.0.0` (`configs/audiocontrol.json`); bind `127.0.0.1` for a dev backend. Config file: `-c <path>` (`src/main.rs:798`). Our image binds `127.0.0.1` (see `FACTS.md`). |
+| Two daemons in production | Player daemon (1080): players, library, volume, imagecache, WebSocket, settings. Metadata daemon (1084): `/api/coverart/*`, `/api/favourites/*`, lastfm, audiodb, artist images. The shipped deb builds `audiocontrol` with `--no-default-features` (`debian/rules:83-84`) so **1080 alone does not serve favorites or coverart**. In a default `cargo build` (what `docs/dev/tools/run-acr.sh` uses) the metadata routes are mounted in-process on 1080 as well. nginx maps both under `/api/audiocontrol/` (see `doc/api.md:116-130`). A client takes a configurable base URL and does not hard-code ports. |
 | Behind nginx | `X-Forwarded-Prefix: /api/audiocontrol` is set; ACR then rewrites `song.cover_art_url` and `song.metadata.lyrics_url` (REST + WS) to carry the prefix (`crates/acr-types/src/urlprefix.rs`). Use returned paths verbatim; never prepend your own prefix. Direct (no header): paths come back as `/api/...`. |
 | CORS | **None.** No `Access-Control-*` headers; `OPTIONS` returns 404 (live). Cross-origin fetch with a JSON `Content-Type` fails preflight. Serve the UI same-origin or dev-proxy (e.g. Vite `server.proxy` with `ws: true`). WebSocket has no Origin check. |
 | Auth | None in ACR. nginx `auth.d/audiocontrol-auth.json` marks every route listed in this file as tier `ok`; anything else is `risky`. |
-| Error body types | Player routes: JSON `{success:false,message}`. Malformed JSON body / bad param: Rocket HTML page (400/422/404). Volume POST failures: **HTTP 200** with `success:false`. Favourites failures: **HTTP 200** `{"Err":{...}}`. Handle all three. |
+| Error body types | Player routes: JSON `{success:false,message}`. Malformed JSON body / bad param: Rocket HTML page (400/422/404). Volume POST failures: **HTTP 200** with `success:false`. Favorites failures: **HTTP 200** `{"Err":{...}}`. Handle all three. |
 
 ## 1. Now playing
 
@@ -158,11 +158,11 @@ Server frames to the client:
 | `active_player_changed` | `new_player_id` | **Never emitted**: `notify_active_player_changed` (`player_controller.rs:614`) has no caller. After a `state_changed → playing` re-GET `/api/players` or `/api/player` to learn the active one (live: no event when `demo` took over from `mpd`). |
 | `volume_changed` | `control_name, display_name, percentage, decibels\|null, raw_value\|null` | **No `player_name`/`player_id` at top level**; `source:{"player_name":null,"player_id":"system:6600"}`. Live: `{"type":"volume_changed","control_name":"dummy","display_name":"Master Volume","percentage":65.0,"decibels":-42.0,"raw_value":65}`. |
 
-No `metadata_changed` event exists. No dedicated "players list changed" event exists (hot-plug isn't modelled; re-fetch `/api/players` on reconnect and on `state_changed`).
+No `metadata_changed` event exists. No dedicated "players list changed" event exists (hot-plug isn't modeled; re-fetch `/api/players` on reconnect and on `state_changed`).
 Events from *inactive* players are delivered too (unless filtered) — filter on `player_name === active.name` in the UI.
 
-## 6. Favourites / radio
-**Favourites** (metadata daemon; mounted `/api/favourites`, `crates/audiocontrol-metadata/src/api/mod.rs:57`; **not on the player daemon in production builds**). Keyed by `artist`+`title` strings, not by id. Results are serde `Result` wrappers and **HTTP status is 200 even for `Err`** (doc ≠ src: `doc/api.md:2690-2770` promises 400):
+## 6. Favorites / radio
+**Favorites** (metadata daemon; mounted `/api/favourites`, `crates/audiocontrol-metadata/src/api/mod.rs:57`; **not on the player daemon in production builds**). Keyed by `artist`+`title` strings, not by id. Results are serde `Result` wrappers and **HTTP status is 200 even for `Err`** (doc ≠ src: `doc/api.md:2690-2770` promises 400):
 ```
 GET    /api/favourites/providers → {"enabled_count":1,"enabled_providers":["settingsdb"],"providers":[{"name":"settingsdb","display_name":"User settings","enabled":true,"active":true,"favourite_count":0},{"name":"lastfm",…,"enabled":false},{"name":"spotify",…}],"total_providers":3}
 GET    /api/favourites/is_favourite?artist=A&title=T → {"Ok":{"is_favourite":false,"providers":[]}}    (live; providers are display names)
@@ -170,7 +170,7 @@ POST   /api/favourites/add    {"artist":"A","title":"T"} → {"Ok":{"success":tr
 DELETE /api/favourites/remove {"artist":"A","title":"T"} → {"Ok":{…"Removed…"}}
 empty artist/title → 200 {"Err":{"error":"Invalid song: Artist cannot be empty"}} ; missing field/param → Rocket HTML 422
 ```
-`song.liked` is set only by the Last.fm worker (`lastfm_worker.rs:812`); a local favourite never appears in `song.liked`. The UI must call `is_favourite` itself per song. Spotify provider is read-only.
+`song.liked` is set only by the Last.fm worker (`lastfm_worker.rs:812`); a local favorite never appears in `song.liked`. The UI must call `is_favourite` itself per song. Spotify provider is read-only.
 **Radio / webradio**: no radio API. A radio station is just an MPD queue item whose URI is an `http(s)://` stream (`POST …/command/add_track {"uri":"http://…"}` then `play_queue_index:<n>`). Songs from streams have `stream_url` = the URL, no `duration`, title/artist split from the ICY title (`GET/POST /api/player/<n>/splitter/<b64 station>` tunes the split order), and `cover_art_url` = station logo with `metadata.cover_art_source:"station_logo"` until a lookup replaces it. No station list/browse/search endpoint exists (`browse`/`search` capabilities exist, but no REST route uses them). LMS/Spotify/“radio” backends are the only other radio-ish paths.
 
 ## 7. Version / config keys
@@ -185,7 +185,7 @@ empty artist/title → 200 {"Err":{"error":"Invalid song: Artist cannot be empty
 5. `song.uri` in `doc/websocket.md` / generic-player docs: field is `stream_url` (no `uri`).
 6. WebSocket: welcome includes `client_id` and different text; `subscription_updated` text differs; error frames have no `code` (1001–1003 don't exist); `players` filter matches names not ids; example comment "players: null for active player" is wrong (null = all). `doc/websocket.md` `active_player_changed` is documented but never emitted; `position_changed` is never emitted by MPD.
 7. `volume/mute`: docs say unmute → 50%; source restores the previous level.
-8. Favourites errors: docs say HTTP 400; source returns 200 `{"Err":…}`.
+8. Favorites errors: docs say HTTP 400; source returns 200 `{"Err":…}`.
 9. `doc/api.md:116-130` says port 1080 alone doesn't serve metadata routes; true for the shipped deb, false for a default `cargo build` (metadata linked in-process).
 10. `POST /api/player/<n>/update` request format: `doc/api.md` shows a Librespot-specific shape (`event`, `NAME`…); the generic player takes `{"type":"state_changed|song_changed|position_changed|shuffle_changed|loop_mode_changed|queue_changed|stream_info",…}` (`generic_controller.rs:203-224`). (An older duplicate handler `update_player_state`, `players.rs:707`, is not mounted.)
 

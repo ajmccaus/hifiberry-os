@@ -120,8 +120,10 @@ for f in /usr/lib/audio-os/audio_os_helper.py /usr/bin/touch-timeout /usr/share/
     check "file $f" test -s "$root$f"
 done
 
+check "third-party notice shipped" test -s "$root/usr/share/doc/audio-os/THIRD-PARTY.md"
+
 # docs/device-test.md tells the owner to run these on the device; keep the list in step with it.
-for tool in aplay amixer bluetoothctl curl findmnt ip journalctl nft pgrep ss sudo; do
+for tool in aplay amixer bluetoothctl curl dmesg findmnt free hostname ip journalctl nft passwd pgrep ss sudo systemctl top uptime; do
     check "device-test tool: $tool" bash -c "test -x '$root/usr/bin/$tool' || test -x '$root/usr/sbin/$tool'"
 done
 
