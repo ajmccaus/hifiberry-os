@@ -27,7 +27,7 @@ and the owner's device test (docs/device-test.md, still to be written) passes.
 - No decision-record process. Old branches are deleted once nothing here needs them.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 04:40 UTC — PAUSED at owner-reported 70% usage; resume after 08:10 UTC reset)
+## State (2026-11-17 08:15 UTC — resumed; one CI builder (opus) driving image.yml to green, one docs writer (sonnet) on README/CLAUDE.md/device-test.md; manager commits docs, builder commits os/ image/ .github/ by explicit path)
 | Part | State |
 |---|---|
 | `helper/` | Done, reviewed, 32 tests green. |
@@ -98,4 +98,4 @@ module), apt in chroots via https mirrors + `$HTTPS_PROXY` + CA bundle.
   overshoot stays under the owner's 80% limit. Re-baseline when `resetsAt` changes. Other sessions
   on the account also count, so recalibrate whenever the owner quotes a percentage.
 
-- Usage estimate lags: `cost_usd` only refreshes when a manager turn ends and under-reads builder spend (estimate said 50% when the owner saw ~65–70%). Use $0.35 per 1% as the working rate, pause at an estimated 55%, and treat any owner-quoted percentage as the authority. Manager check-in turns themselves cost about 1% each: check every 15 minutes, not 10.
+- Usage estimate lags: `cost_usd` only refreshes when a manager turn ends and under-reads builder spend (estimate said 50% when the owner saw ~65–70%). Window 2 baseline: cost_usd 67.29 at 08:12 UTC. Use $0.35 per 1% as the working rate, pause at an estimated 55% (cost_usd >= 86.5), and treat any owner-quoted percentage as the authority. Manager check-in turns themselves cost about 1% each: check every 15 minutes, not 10.
