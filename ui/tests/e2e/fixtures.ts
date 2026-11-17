@@ -82,6 +82,11 @@ export function watch(page: Page, opts: { allowNetworkErrors?: boolean; allowHtt
     if (!(opts.allowNetworkErrors && NETWORK_NOISE.test(m.text()))) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
+  // The browser's console line does not say which request failed; keep the list for the failure message.
+  const httpErrors: string[] = [];
+  page.on('response', (r) => {
+    if (r.status() >= 400) httpErrors.push(`${r.request().method()} ${r.url()} -> ${r.status()}`);
+  });
   page.on('request', (r) => {
     const url = new URL(r.url());
     if (url.protocol === 'data:' || url.protocol === 'blob:') return;
@@ -89,7 +94,7 @@ export function watch(page: Page, opts: { allowNetworkErrors?: boolean; allowHtt
   });
   return () => {
     expect(foreign, 'requests leaving the origin').toEqual([]);
-    expect(errors, 'console errors').toEqual([]);
+    expect(errors, `console errors (HTTP error responses seen: ${httpErrors.join(', ') || 'none'})`).toEqual([]);
   };
 }
 

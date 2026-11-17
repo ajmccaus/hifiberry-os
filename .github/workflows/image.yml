@@ -93,7 +93,7 @@ jobs:
           npm run test:e2e
       - name: Stack logs on failure
         if: failure()
-        run: tail -n 40 ui/tests/.stack/*.log docs/dev/tools/run/*.log docs/dev/tools/run/mpd/mpd.log || true
+        run: tail -n 150 ui/tests/.stack/*.log docs/dev/tools/run/*.log docs/dev/tools/run/mpd/mpd.log || true
 
   image:
     needs: [checks, ui-e2e]
