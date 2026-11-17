@@ -5,6 +5,7 @@ name: image
 on:
   push:
     branches: [master, "claude/**"]
+    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,7 @@ permissions:
 
 concurrency:
   group: image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   checks:
@@ -21,7 +22,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Shell scripts (bash -n, shellcheck)
         run: |
-          mapfile -t bash_scripts < <(git ls-files '*.sh' os/rootfs/usr/lib/audio-os/kiosk-rotation os/rootfs/usr/lib/audio-os/kiosk-session)
+          # Product scripts only; docs/dev/tools holds dev-only reference tools.
+          mapfile -t bash_scripts < <(git ls-files 'os/*.sh' 'image/*.sh' 'ui/*.sh' 'helper/*.sh' \
+            os/rootfs/usr/lib/audio-os/kiosk-rotation os/rootfs/usr/lib/audio-os/kiosk-session)
           sh_scripts=(os/DEBIAN/postinst os/DEBIAN/prerm os/DEBIAN/postrm)
           for f in "${bash_scripts[@]}"; do bash -n "$f"; done
           for f in "${sh_scripts[@]}"; do sh -n "$f"; done
@@ -33,19 +36,64 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: UI typecheck, tests, build
+      - name: UI typecheck, unit tests, build
         working-directory: ui
         run: |
           npm ci
-          npx playwright install --with-deps chromium webkit
           npm run typecheck
-          npm test
+          npm run test:unit
           npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
           path: ui/dist
           if-no-files-found: error
+
+  # The UI end-to-end suite against a real ACR + MPD and the real helper (ui/tests/stack.sh).
+  # Runs beside the image build; together with `checks` it is the whole of `npm test`.
+  ui-e2e:
+    runs-on: ubuntu-24.04
+    env:
+      ACR_COMMIT: 47f2b51e4e11577f81cc60266d177c4208c4590b  # audiocontrol 0.25.0, the UI's reference
+      ACR_SCRIPT: ${{ github.workspace }}/docs/dev/tools/run-acr.sh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test stack tools (MPD, mpc, ffmpeg, ACR build deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mpd mpc ffmpeg libdbus-1-dev libasound2-dev pkg-config
+          # The stack runs its own MPD on 127.0.0.1:6600; the distro's service must not hold the port.
+          sudo systemctl disable --now mpd.service mpd.socket || true
+      - name: ACR source
+        run: |
+          git init --quiet docs/dev/tools/acr
+          git -C docs/dev/tools/acr fetch --quiet --depth 1 https://github.com/hifiberry/acr "$ACR_COMMIT"
+          git -C docs/dev/tools/acr checkout --quiet --detach FETCH_HEAD
+          test "$(git -C docs/dev/tools/acr rev-parse HEAD)" = "$ACR_COMMIT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            docs/dev/tools/acr/target
+          key: acr-${{ runner.os }}-${{ env.ACR_COMMIT }}
+      - name: Build ACR
+        working-directory: docs/dev/tools/acr
+        run: cargo build --release --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: UI end-to-end tests (Chromium, WebKit)
+        working-directory: ui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+          npm run test:e2e
+      - name: Stack logs on failure
+        if: failure()
+        run: tail -n 40 ui/tests/.stack/*.log docs/dev/tools/run/*.log docs/dev/tools/run/mpd/mpd.log || true
 
   image:
     needs: checks
@@ -63,7 +111,7 @@ jobs:
       - name: Host tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends systemd-container mtools dosfstools jq xz-utils gcc make libc6-dev
+          sudo apt-get install -y --no-install-recommends systemd-container fdisk e2fsprogs mtools dosfstools jq xz-utils gcc make libc6-dev
       - uses: actions/cache@v4
         with:
           path: ${{ env.AUDIO_OS_CACHE_DIR }}
