@@ -122,7 +122,10 @@ scratchpad/ref/{upstream-os,acr,hbos-ui,configurator,pipewire-api,hbos-bluetooth
 - Kiosk upstream = getty autologin -> .bash_profile -> `cage -- cog --platform=wl --scale=N URL`,
   with `COG_PLATFORM_DRM_CURSOR=0`; upstream's script is not runnable offline; we use our own unit.
 - touch-timeout (owner's own C daemon, https://github.com/ajmccaus/touch-timeout, pin commit
-  2ad5769 = v0.8.0): dims after idle, off after `-t` seconds, restores on touch; options
+  2ad5769 = the v0.8.0 daemon source; the five commits after the tag only add docs, test scripts
+  and an optional http-wake script we do not ship. A v0.9 design (doc/DESIGN.md at 27faa00, not
+  implemented) keeps -b/-t and SIGUSR1, adds a wake FIFO /run/touch-timeout/wake, and makes
+  out-of-range options exit 2 — re-check the helper when the owner releases it): dims after idle, off after `-t` seconds, restores on touch; options
   `-b N` full brightness raw 15-255 (default 150), `-t N` off-timeout s 10-86400 (default 300),
   `-d N` dim at N% of timeout; SIGUSR1 wakes the display; auto-detects backlight (first entry of
   /sys/class/backlight) and touch input. `make` builds it; its unit is systemd/touch-timeout.service
