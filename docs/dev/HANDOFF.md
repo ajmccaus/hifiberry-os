@@ -27,7 +27,7 @@ and the owner's device test (docs/device-test.md) passes.
 - No decision-record process. Old branches are deleted once nothing here needs them.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 09:50 UTC — FLASHABLE IMAGE PUBLISHED: CI run 44055364215 green at 2caf8112 (checks, ui-e2e, image), prerelease `dev` holds `audio-os-0.1.0+git2caf811.img.xz` + `.sha256`, manager-verified against the run and the release. No builder running. Left: master fast-forward, old-branch deletion, owner's device test)
+## State (2026-11-17 09:50 UTC — FLASHABLE IMAGE PUBLISHED: CI run 44055364215 green at 2caf8112 (checks, ui-e2e, image), prerelease `dev` holds `audio-os-0.1.0+git2caf811.img.xz` + `.sha256`, manager-verified against the run and the release. No builder running. `master` fast-forwarded to the product branch at 86458954 (09:52 UTC); PRs #1 and #2 closed. Old branches (`claude/adopt-one21tools`, `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `hbosng`) could NOT be deleted from this session — the session's git access refuses branch deletion — so the owner deletes them on GitHub. Left: confirm the CI runs for 86458954 on both branches are green, then the owner's device test)
 | Part | State |
 |---|---|
 | `helper/` | Done, reviewed, 32 tests green. |
