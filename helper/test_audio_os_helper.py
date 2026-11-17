@@ -67,7 +67,7 @@ class HelperCase(unittest.TestCase):
         script.chmod(script.stat().st_mode | stat.S_IXUSR)
         self.version_file = root / "version"
         self.acr = FakeAcr(("127.0.0.1", 0), FakeAcr.Handler)
-        threading.Thread(target=self.acr.serve_forever, daemon=True).start()
+        threading.Thread(target=self.acr.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         self.addCleanup(self.acr.server_close)
         self.addCleanup(self.acr.shutdown)
         if self.prepare:
@@ -87,7 +87,7 @@ class HelperCase(unittest.TestCase):
         self.app = helper.App(helper.Config.from_env(env))
         self.server = helper.make_server(self.app, 0)
         self.port = self.server.server_address[1]
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         threading.Thread(target=self.app.poll_acr, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -166,6 +166,9 @@ class ScreenTests(HelperCase):
         self.assertEqual((status, body), (500, {"error": "system command failed"}))
         status, body, _ = self.put_screen({"brightness": 10})
         self.assertEqual((status, body), (500, {"error": "system command failed"}))
+        self.fail_flag.unlink()  # a failed apply must be retried, not remembered as applied
+        self.assertEqual(self.put_screen({"brightness": 10})[0], 200)
+        self.assertEqual(self.env_file(), "TOUCH_TIMEOUT_ARGS=-b 26 -t 300\n")
 
 
 class MaxBrightness255Tests(HelperCase):
@@ -178,8 +181,8 @@ class MaxBrightness255Tests(HelperCase):
 class MaxBrightness31Tests(HelperCase):
     max_brightness = "31"
 
-    def test_capped_at_panel_max(self) -> None:
-        for pct, raw in ((1, 15), (60, 31), (100, 31)):
+    def test_scaled_to_panel_max(self) -> None:
+        for pct, raw in ((1, 15), (60, 19), (100, 31)):
             self.put_screen({"brightness": pct})
             self.assertEqual(self.env_file(), f"TOUCH_TIMEOUT_ARGS=-b {raw} -t 300\n")
 

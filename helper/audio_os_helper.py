@@ -99,7 +99,9 @@ def check_stations(value: Any) -> list[dict[str, str]]:
 
 
 def raw_brightness(percent: int, hw_max: int) -> int:
-    return min(hw_max, max(RAW_MIN, (percent * RAW_MAX + 50) // 100))
+    """Percent of the panel's usable range, within what touch-timeout's -b accepts."""
+    top = min(hw_max, RAW_MAX)
+    return min(top, max(RAW_MIN, (percent * top + 50) // 100))
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -193,7 +195,11 @@ class App:
         except OSError:
             pass
         write_atomic(path, content)
-        self.systemctl("try-restart", "touch-timeout.service")
+        try:
+            self.systemctl("try-restart", "touch-timeout.service")
+        except ApiError:
+            path.unlink(missing_ok=True)  # so the next change retries instead of looking applied
+            raise
 
     def get_screen(self) -> dict[str, Any]:
         return {"available": self.backlight() is not None, **self.screen}
