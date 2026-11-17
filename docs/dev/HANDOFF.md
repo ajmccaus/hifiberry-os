@@ -27,26 +27,20 @@ and the owner's device test (docs/device-test.md) passes.
 - No decision-record process. Old branches are deleted once nothing here needs them.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 12:50 UTC — FLASHABLE IMAGE PUBLISHED: CI run 44055364215 green at 2caf8112 (checks, ui-e2e, image), prerelease `dev` holds `audio-os-0.1.0+git2caf811.img.xz` + `.sha256`, manager-verified against the run and the release. No builder running. `master` fast-forwarded to the product branch at 86458954 (09:52 UTC); PRs #1 and #2 closed. Old branches (`claude/adopt-one21tools`, `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `hbosng`) could NOT be deleted from this session — the session's git access refuses branch deletion — so the owner deletes them on GitHub. Runs #21 (branch) and #22 (master) for 86458954 green; `dev` then held `audio-os-0.1.0+git8645895.img.xz`. c8152864 added device-test tool checks to `verify.sh`; its run #23 (44078491943) FAILED in `ui-e2e` before the image job ran: kiosk-webkit `radio.spec.ts:14` saw one console error, an HTTP 500 from an unidentified request, after every functional step had passed (same test green in Chromium and in runs #20-22; the commit touched no UI code). Cause unknown. `fixtures.ts` now names failing requests in the assertion message and the workflow dumps 150 log lines; if it recurs, read which URL returned 500 and fix that, do not allow the status. Run #24 (44082733998) at 06a911e3 was green in all three jobs, so the new device-test tool checks pass against the real image and `dev` now holds `audio-os-0.1.0+git06a911e.img.xz`; the 500 did not recur and stays an open, unexplained item. `master` fast-forwarded to the branch tip at 12:50 UTC. Left: the owner's device test (docs/device-test.md) and the fixes its results call for.)
+## State (2026-11-17 12:55 UTC — FLASHABLE IMAGE PUBLISHED. Run #24 (44082733998) at 06a911e3 was green in all three jobs; prerelease `dev` held `audio-os-0.1.0+git06a911e.img.xz` + `.sha256` (each later branch build replaces it). `master` was fast-forwarded to d638f224. The owner deleted the five old branches; only `master`, `buildroot-legacy` and the working branch remain. Open, unexplained: run #23 failed once in `ui-e2e` (kiosk-webkit `radio.spec.ts:14`, one HTTP 500 from an unidentified request after every functional step passed); `fixtures.ts` now names failing requests in the assertion message — if it recurs, fix that request's cause, do not allow the status. v0.1: the workflow now also runs for `v*` tags, builds with the tag as the version and publishes a release named after the tag; this is in a pull request to `master`. After it merges, the owner creates tag `v0.1` on `master` (this session's git access cannot push tags). The tag path has not run yet. Left: that tag, the owner's device test (docs/device-test.md) and the fixes its results call for.)
 | Part | State |
 |---|---|
 | `helper/` | Done, reviewed, 32 tests green. |
 | `ui/` | DONE and manager-verified (commit dc952ebc): typecheck clean, 26 unit tests, Playwright 56 passed / 12 skipped on Chromium + WebKit, screenshots compared with the reference. |
 | `os/`, `image/`, workflow | DONE: green in CI after 5 rounds. Found and fixed on the way: first boot (machine-id uninitialized) enabled every unit without a preset (ssh, userconfig, nftables.service, systemd-networkd) — `10-audio-os.preset` now enables our four units and `disable *`; `verify.sh` asserts those units stay off, waits for systemd/user units/ACR before checking, and runs polkit checks as a real audio-os service process where a denial must be a real denial. Excused in the container only: volume-store, remount-fs, firstboot, rtkit (listed in device-test.md). `image` now needs `checks` and `ui-e2e`. Upstream audiocontrol.service still uses a /var/run PIDFile (harmless warning). |
 | Docs | README, CLAUDE.md and docs/device-test.md reconciled with the image: `verify.sh` now asserts every command the device test names exists in the image (aplay, amixer, bluetoothctl, curl, findmnt, ip, journalctl, nft, pgrep, ss, sudo); device-test no longer assumes `libinput`, an `nqptp.service` unit or a `pi` user. README makes no journal/watchdog claims; its firewall list matches `firewall.nft`. |
-| Branch cleanup | Not done: `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `claude/adopt-one21tools`, `hbosng` still exist. Fast-forwarding `master` to the product branch is also pending. |
+| Branch cleanup | Done by the owner: only `master`, `buildroot-legacy` and the working branch exist. |
 
 ## Next steps, in order
-0. (Resume point) Start ONE fresh system builder from `docs/dev/brief-system.md` + this State row: re-register arm64 binfmt, rebuild the .deb, get one complete local `image/build.sh` + `verify.sh` (a), then push and iterate on the CI `image` job. Step 1 below (UI) is finished.
-1. Finish `ui/`: run typecheck/unit/e2e (Chromium + WebKit) against the real ACR and helper;
-   compare screenshots with `docs/dev/reference-shots/`; review the code.
-2. Finish `os/` + `image/`: review; one full local `image/build.sh` run (emulated, slow);
-   `image/verify.sh` offline part.
-3. Push; iterate on the CI run until the `image` job (build + nspawn boot test) is green and the
-   prerelease `dev` carries the `.img.xz`.
-4. Write README, CLAUDE.md, `docs/device-test.md` (flash, first boot incl. the one automatic
-   reboot for sound-card detection, what to check, how to report).
-5. Delete the old branches; fast-forward `master`.
+1. Owner merges the v0.1 pull request, then creates tag `v0.1` on `master` (GitHub: Releases → Draft a new release → tag `v0.1`, target `master`). The workflow run for the tag attaches the image to that release. It is the first run of the tag path: check it.
+2. Owner runs `docs/device-test.md` on the hardware and reports the results.
+3. Fix what the device test finds; each fix goes through CI before the next image.
+4. When touch-timeout v0.9 is released: move the pin, switch the helper's wake to the FIFO, drop one polkit permission.
 
 ## Rebuilding the scratch area (the container is ephemeral)
 Under a scratch dir `S`: `S/ref/acr` = github.com/hifiberry/acr @ 47f2b51 (`cargo build --release`,

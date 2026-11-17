@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds the audio-os arm64 .deb: os/rootfs + UI dist + helper + touch-timeout (built from the pinned
 # commit, natively on arm64 or with aarch64-linux-gnu-gcc elsewhere). Usage: build-deb.sh <ui-dist> <out-dir>
-# Version: $AUDIO_OS_VERSION, else 0.1.0+git<short HEAD>; it also lands in /usr/share/audio-os/version.
+# Version: $AUDIO_OS_VERSION (CI sets it from a v* tag), else 0.1.0+git<short HEAD>; it also lands in /usr/share/audio-os/version.
 set -euo pipefail
 
 TOUCH_TIMEOUT_URL=https://github.com/ajmccaus/touch-timeout

@@ -1,6 +1,6 @@
 # audio-os
 
-A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen and a HiFiBerry Amp2: Raspberry Pi OS Lite arm64 (Debian 13) plus HiFiBerry's upstream apt packages plus our own `audio-os` package (web UI, device helper, kiosk, firewall, hardening). CI builds the SD image and publishes it as the prerelease `dev`. The old buildroot-based HiFiBerryOS is retired; nothing here refers to it.
+A music-player OS for a Raspberry Pi 4 (2 GB) with the official 7" touchscreen and a HiFiBerry Amp2: Raspberry Pi OS Lite arm64 (Debian 13) plus HiFiBerry's upstream apt packages plus our own `audio-os` package (web UI, device helper, kiosk, firewall, hardening). CI builds the SD image and publishes it: the prerelease `dev` from the working branch, a release named after the tag for a `v*` tag. The old buildroot-based HiFiBerryOS is retired; nothing here refers to it.
 
 ## Layout
 

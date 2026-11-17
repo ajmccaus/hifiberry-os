@@ -20,7 +20,7 @@ Target hardware: Raspberry Pi 4 with 2 GB of memory, the official 7-inch DSI tou
 
 ## Get the image
 
-Every build is published as the rolling prerelease `dev` on the repository's Releases page (https://github.com/ajmccaus/hifiberry-os/releases/tag/dev). Download both assets: `audio-os-<version>.img.xz` and `audio-os-<version>.img.xz.sha256`. Check the download, then write it to an SD card:
+Releases are on the repository's Releases page (https://github.com/ajmccaus/hifiberry-os/releases): a version tag such as `v0.1` publishes a release of that name, and every build of the working branch replaces the rolling prerelease `dev`. Download both assets: `audio-os-<version>.img.xz` and `audio-os-<version>.img.xz.sha256`. Check the download, then write it to an SD card:
 
 ```
 sha256sum -c audio-os-*.img.xz.sha256

@@ -18,7 +18,7 @@ cat ~/.ssh/id_ed25519.pub
 
 ## 2. Flash
 
-1. Download `audio-os-<version>.img.xz` and its `.sha256` from the `dev` prerelease.
+1. Download `audio-os-<version>.img.xz` and its `.sha256` from the repository's Releases page: the latest version release, or the `dev` prerelease for the newest build.
 2. Verify it: `sha256sum -c audio-os-*.img.xz.sha256`. Expected: `OK`.
 3. Write it to the card (see README). Expected: the write finishes without error.
 4. Re-insert the card. Expected: a small FAT partition shows files `audio-os.conf`, `user-data`, `network-config`, `config.txt`, `cmdline.txt`.
