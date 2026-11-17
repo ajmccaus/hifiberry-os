@@ -1,0 +1,29 @@
+#!/bin/sh
+# audio-os postrm: drop unit enablement and reload nginx without our locations. Users and
+# /var/lib/audio-os (radio favourites) are kept unless purged.
+set -e
+
+UNITS="audio-os-firewall.service audio-os-helper.service touch-timeout.service kiosk.service"
+
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+    if [ -x /usr/bin/deb-systemd-helper ]; then
+        for unit in $UNITS; do
+            if [ "$1" = purge ]; then
+                deb-systemd-helper purge "$unit" >/dev/null
+                deb-systemd-helper unmask "$unit" >/dev/null
+            else
+                deb-systemd-helper mask "$unit" >/dev/null
+            fi
+        done
+    fi
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        if systemctl is-active --quiet nginx.service && nginx -t 2>/dev/null; then
+            systemctl reload nginx.service
+        fi
+    fi
+fi
+
+if [ "$1" = purge ]; then
+    rm -rf /var/lib/audio-os /var/lib/kiosk
+fi

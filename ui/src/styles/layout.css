@@ -1,0 +1,527 @@
+/* App chrome: top tab bar, screens + sidebar frame, home, compact menu, player bar.
+   Constraint: compact = max-width 620px, wide = min-width 621px (legacy breakpoints); bars are 49/50 px. */
+
+/* ---------- top tab bar (wide) ---------- */
+
+.top-bar {
+  display: none;
+  position: relative;
+  z-index: 4;
+  flex-shrink: 0;
+  height: var(--top-bar-height);
+  background-color: var(--bg);
+}
+
+.tabs {
+  display: flex;
+  height: 50px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  box-shadow: inset 0 -1px var(--line);
+  background-color: var(--bg);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-spacer {
+  width: 10px;
+  flex-shrink: 0;
+}
+
+@media (pointer: coarse) {
+  .tab-spacer {
+    width: 60px;
+  }
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: var(--top-bar-height);
+  padding: var(--font-nudge) calc(10px - 0.1em) 0 10px;
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--tab);
+  transition: color 0.3s ease, opacity 0.3s ease;
+}
+
+.tab.name {
+  font-weight: 500;
+}
+
+.tab.selected {
+  color: var(--fg);
+}
+
+.tab:active {
+  opacity: 0.5;
+  transition: none;
+}
+
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 2px;
+  height: 11px;
+  margin-left: -1px;
+  background-color: currentColor;
+  transform-origin: bottom;
+  transform: scaleY(0);
+  transition: transform 0.3s ease;
+}
+
+.tab.selected::after {
+  transform: scaleY(1);
+}
+
+.tab-separator {
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  margin: 15px 10px 0;
+  background-color: var(--line);
+}
+
+/* ---------- screens ---------- */
+
+.screens {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  transition: transform 0.5s var(--ease);
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg);
+  /* backwards fill: no lasting transform, so dialogs inside a screen can overlay the bars */
+  animation: screen-in 0.5s var(--ease) backwards;
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+}
+
+.scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.content {
+  padding: 0 20px 20px;
+}
+
+.content::before {
+  content: '';
+  display: block;
+  margin-bottom: 7px;
+}
+
+/* compact frame: 50 px header with back button, then the large title */
+.screen-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 50px;
+  padding: 0 20px;
+  background-color: var(--bg);
+}
+
+.screen-header h1 {
+  display: none;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  margin-left: -20px;
+  padding: 0 10px 0 20px;
+  opacity: 0.5;
+  transition: opacity 0.3s ease, background-color 0.3s ease;
+}
+
+.back .sym {
+  width: 23px;
+  height: 23px;
+  margin-right: -3px;
+}
+
+.back span {
+  padding: var(--font-nudge) 20px 0 0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.back:active {
+  transform: scale(0.9);
+  transition: none;
+}
+
+.large-title {
+  position: relative;
+  height: var(--menu-height);
+  margin: 0;
+  padding: 5px 20px 0;
+  font-size: 2em;
+  box-shadow: 0 1px var(--line);
+}
+
+@media (min-width: 621px) {
+  .top-bar {
+    display: block;
+  }
+
+  .framed {
+    padding-left: var(--sidebar-width);
+  }
+
+  .framed .screen-header {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--sidebar-width);
+    height: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--sidebar-padding) 0;
+    background-color: var(--sidebar-bg);
+    box-shadow: 1px 0 var(--line);
+  }
+
+  .framed .back {
+    width: 100%;
+    margin: calc(0px - var(--sidebar-padding)) 0 1.5rem;
+    box-shadow: 0 1px var(--line);
+  }
+
+  .framed .back:active {
+    transform: none;
+    background-color: var(--line);
+    opacity: 0.7;
+  }
+
+  .framed .screen-header h1 {
+    display: block;
+    position: relative;
+    margin: 0 var(--sidebar-padding) 1.5em;
+    font-size: 1.3em;
+    text-align: left;
+  }
+
+  .framed .screen-header h1::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -0.5em;
+    width: 15px;
+    height: 2px;
+    background-color: currentColor;
+  }
+
+  .large-title {
+    display: none;
+  }
+
+  .framed .content {
+    padding: 0 15% 20px;
+  }
+
+  .content::before {
+    height: calc(var(--sidebar-padding) - 15px);
+  }
+}
+
+@media (min-width: 800px) {
+  .framed .screen-header h1 {
+    font-size: 1.5em;
+  }
+
+  .framed .content {
+    padding-left: 20%;
+    padding-right: 20%;
+  }
+}
+
+/* ---------- home ---------- */
+
+.home .scroll {
+  display: flex;
+}
+
+.home-column {
+  width: 100%;
+  max-width: 340px;
+  margin: auto;
+  padding: 20px;
+  text-align: center;
+}
+
+.home-model {
+  min-height: 1em;
+  margin: 0 0 0.8em;
+}
+
+.home-name {
+  margin: 0 0 20px;
+  font-size: 2em;
+  overflow-wrap: anywhere;
+}
+
+.home-menu {
+  text-align: left;
+}
+
+/* ---------- compact slide-in menu ---------- */
+
+.main-menu {
+  display: none;
+}
+
+.plexi {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background-color: transparent;
+  transition: background-color 0.5s ease;
+}
+
+.plexi.visible {
+  pointer-events: auto;
+  background-color: var(--plexi);
+}
+
+@media (max-width: 620px) {
+  .screens.shifted {
+    transform: translateX(-50px);
+  }
+
+  .main-menu {
+    display: block;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: calc(var(--bar-height) + env(safe-area-inset-bottom));
+    z-index: 6;
+    width: 80%;
+    max-width: 300px;
+    padding: 7px 20px 10px;
+    overflow-y: auto;
+    background-color: var(--menu-bg);
+    color: #fff;
+    box-shadow: inset 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.5s var(--ease), visibility 0s 0.5s;
+  }
+
+  .main-menu.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.5s var(--ease);
+  }
+}
+
+.menu-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: calc(100% + 40px);
+  height: var(--menu-height);
+  margin: 0 -20px;
+  padding: 0 20px 0 25px;
+  color: #999;
+  transition: background-color 0.5s ease;
+}
+
+.menu-row .item-label {
+  font-size: 0.8em;
+  letter-spacing: var(--uppercase-spacing);
+  text-transform: uppercase;
+}
+
+.menu-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: currentColor;
+  transition: width 0.3s ease;
+}
+
+.menu-row.selected {
+  color: #fff;
+}
+
+.menu-row.selected::before {
+  width: 12px;
+}
+
+.menu-row:active {
+  background-color: rgba(255, 255, 255, 0.3);
+  transition: none;
+}
+
+.main-menu hr {
+  margin: 10px 5px;
+  border-color: #444;
+}
+
+/* ---------- player bar (always dark) ---------- */
+
+.player-bar {
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+  height: calc(var(--bar-height) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background-color: var(--bottom-bg);
+  color: #fff;
+  outline: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.bar-wrap {
+  display: flex;
+  align-items: center;
+  height: var(--bar-height);
+  padding: 0 max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
+  transition: opacity 0.5s ease, transform 0.5s var(--ease);
+}
+
+.player-bar.shifted .bar-wrap {
+  transform: translateY(-30px);
+  opacity: 0;
+}
+
+.bar-wrap .bar-chevron {
+  margin-right: 8px;
+}
+
+.mini-info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: calc(100vw - 350px);
+  height: 100%;
+  margin-right: auto;
+  padding-right: 15px;
+  text-align: left;
+}
+
+.mini-source-icon {
+  margin-right: 15px;
+  opacity: 0.5;
+}
+
+.mini-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mini-title,
+.mini-artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mini-title {
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.mini-artist {
+  margin-top: 1px;
+  font-size: 0.7em;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mini-source-name {
+  overflow: hidden;
+  padding-top: var(--font-nudge);
+  font-size: 0.8em;
+  font-weight: 500;
+  letter-spacing: var(--uppercase-spacing);
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+
+.player-bar .volume {
+  flex: 1 1 auto;
+  max-width: 250px;
+  margin: 0 0 0 auto;
+}
+
+.bar-wrap .menu-button {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  .mini-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--bar-height);
+    max-width: none;
+    height: var(--bar-height);
+    padding: 0 20px;
+    background-color: rgba(34, 34, 34, 0.95);
+    outline: 1px solid rgba(255, 255, 255, 0.1);
+    transform: scaleY(0);
+    transform-origin: bottom;
+    transition: transform 0.5s ease 0.3s;
+    pointer-events: none;
+  }
+
+  .mini-info.notice {
+    transform: scaleY(1);
+    transition-delay: 0s;
+    pointer-events: auto;
+  }
+
+  .player-bar .volume {
+    margin: 0 auto;
+  }
+
+  .bar-wrap .menu-button {
+    display: block;
+    margin-right: -12px;
+    margin-left: -2px;
+  }
+}
+
+@media (max-width: 620px) and (prefers-color-scheme: dark) {
+  .mini-info {
+    background-color: rgba(0, 0, 0, 0.95);
+  }
+}

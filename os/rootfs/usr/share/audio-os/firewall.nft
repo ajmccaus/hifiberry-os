@@ -1,0 +1,36 @@
+#!/usr/sbin/nft -f
+# audio-os inbound firewall: default-drop input, only what the product serves on the LAN.
+# Owns table inet audio_os only (never "flush ruleset"), so reloading it touches nothing else.
+
+destroy table inet audio_os
+
+table inet audio_os {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iif "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+
+        icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept
+        icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded,
+            parameter-problem, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, mld-listener-query,
+            mld2-listener-report } accept
+
+        udp sport 67 udp dport 68 accept
+        ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+        udp dport 5353 accept
+
+        tcp dport { 22, 80, 5000, 7000 } accept
+        udp dport { 319, 320 } accept
+        meta l4proto { tcp, udp } th dport 32768-60999 accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

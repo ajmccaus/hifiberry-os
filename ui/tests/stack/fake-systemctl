@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stand-in for systemctl used by the device helper under test: appends its argv to $FAKE_SYSTEMCTL_LOG.
+# Constraint: never touches the real system; exits 0 so the helper sees success.
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_SYSTEMCTL_LOG:?FAKE_SYSTEMCTL_LOG must be set}"

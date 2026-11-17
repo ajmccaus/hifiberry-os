@@ -1,0 +1,42 @@
+# audio-os device helper: loopback-only device API behind nginx (/api/device/).
+# Unprivileged; its only system actions go through polkit (50-audio-os.rules) via systemctl.
+[Unit]
+Description=audio-os device helper
+After=network.target
+
+[Service]
+Type=simple
+User=audio-os
+Group=audio-os
+ExecStart=/usr/bin/python3 /usr/lib/audio-os/audio_os_helper.py
+Restart=on-failure
+RestartSec=5
+StateDirectory=audio-os
+StateDirectoryMode=0755
+UMask=0022
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

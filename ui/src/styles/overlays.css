@@ -1,0 +1,150 @@
+/* Overlays: reference ".ask" dialog (centred card wide, bottom sheet compact), password form,
+   Connecting and power HUDs. Constraint: z-order ask 9 < HUD 11; plexi colours from tokens. */
+
+.ask-plexi {
+  z-index: 9;
+}
+
+.ask {
+  --ask-w: clamp(350px, 50vw, 500px);
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  visibility: hidden;
+  transition: visibility 0s 0.5s;
+}
+
+.ask.open {
+  visibility: visible;
+  transition: none;
+}
+
+.ask-content {
+  width: var(--ask-w);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: calc(var(--ask-w) * 0.1 - 20px) calc(var(--ask-w) * 0.1);
+  background-color: var(--bg);
+  box-shadow: var(--ask-shadow);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(50px);
+  transition: opacity 0.5s ease, transform 0.5s var(--ease);
+}
+
+.ask.open .ask-content {
+  opacity: 1;
+  transform: none;
+}
+
+.ask-buttons {
+  display: flex;
+  flex-direction: column;
+  margin: 20px 0;
+}
+
+.ask-buttons .pill {
+  margin: 0 0 10px;
+}
+
+.ask-buttons .pill:last-child {
+  margin-bottom: 0;
+}
+
+.ask-buttons .cancel {
+  margin-top: 0;
+}
+
+.password-form input {
+  margin-top: 10px;
+}
+
+@media (max-width: 620px) {
+  .ask {
+    align-items: flex-end;
+  }
+
+  .ask-content {
+    width: 100%;
+    max-height: 90%;
+    padding: 0 20px env(safe-area-inset-bottom);
+  }
+}
+
+/* ---------- HUDs ---------- */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.hud-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 300px;
+  text-align: center;
+}
+
+.hud h1 {
+  margin: 1em 0 0;
+  font-size: 1em;
+}
+
+.hud p {
+  max-width: 300px;
+}
+
+/* Calm: appears only if the link stays down for a moment (no flash on page load). */
+.connecting {
+  background-color: var(--plexi);
+  animation: hud-in 0.5s ease 0.8s both;
+}
+
+@keyframes hud-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.power {
+  background-color: var(--bg);
+  animation: hud-in 0.5s ease both;
+}
+
+.hud-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.hud-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.2;
+  animation: dot 1.4s ease-in-out infinite;
+}
+
+.hud-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.hud-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot {
+  40% {
+    opacity: 0.8;
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "audio-os-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Web UI of the audio-os appliance (touchscreen kiosk + LAN browsers).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test \"tests/unit/*.test.ts\"",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@preact/signals": "2.11.3",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.19.21",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}

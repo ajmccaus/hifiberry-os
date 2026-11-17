@@ -1,0 +1,51 @@
+#!/bin/bash
+# Applies SCREEN_ROTATE (0|90|180|270) from /boot/firmware/audio-os.conf. "touch" runs as root before
+# cage (libinput calibration, since wlroots leaves libinput touch untransformed); "output" runs inside
+# cage (wlr-randr). Both matrices below equal wlroots' apply_output_transform for the same angle.
+set -euo pipefail
+
+CONF=/boot/firmware/audio-os.conf
+RULE=/run/udev/rules.d/90-audio-os-touch-rotation.rules
+
+rotation() {
+    local value
+    value=$(sed -n 's/^SCREEN_ROTATE=\([0-9]*\)\r\{0,1\}$/\1/p' "$CONF" 2>/dev/null | tail -n 1)
+    case "$value" in
+        90|180|270) echo "$value" ;;
+        0|"") echo 0 ;;
+        *) echo "kiosk-rotation: ignoring SCREEN_ROTATE=$value (use 0, 90, 180 or 270)" >&2; echo 0 ;;
+    esac
+}
+
+touch_calibration() {
+    local matrix=""
+    case "$(rotation)" in
+        90) matrix="0 -1 1 1 0 0" ;;
+        180) matrix="-1 0 1 0 -1 1" ;;
+        270) matrix="0 1 0 -1 0 1" ;;
+    esac
+    mkdir -p "${RULE%/*}"
+    if [ -n "$matrix" ]; then
+        printf 'SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="%s"\n' \
+            "$matrix" > "$RULE"
+    else
+        rm -f "$RULE"
+    fi
+    udevadm control --reload
+    udevadm trigger --settle --subsystem-match=input --action=change
+}
+
+output_transform() {
+    local angle output
+    angle=$(rotation)
+    [ "$angle" = 0 ] && return 0
+    for output in $(wlr-randr | awk '/^[^ ]/ { print $1 }'); do
+        wlr-randr --output "$output" --transform "$angle"
+    done
+}
+
+case "${1:-}" in
+    touch) touch_calibration ;;
+    output) output_transform ;;
+    *) echo "usage: $0 touch|output" >&2; exit 2 ;;
+esac

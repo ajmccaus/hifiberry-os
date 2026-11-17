@@ -1,0 +1,212 @@
+/* Design tokens, fonts and base reset. Values come from the legacy MIT stylesheet (beostyle2018.css).
+   Constraint: colours live only here as custom properties; dark mode is prefers-color-scheme. */
+
+@font-face {
+  font-family: Metropolis;
+  src: url(../assets/fonts/Metropolis-Regular.otf) format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Metropolis;
+  src: url(../assets/fonts/Metropolis-Medium.otf) format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --fg: #000;
+  --bg: #fff;
+  --sidebar-bg: #f5f5f5;
+  --ultra-light: #f5f5f5;
+  --bottom-bg: #222;
+  --menu-bg: #222;
+  --button-bg: rgba(0, 0, 0, 0.05);
+  --button-active: silver;
+  --line: rgba(0, 0, 0, 0.1);
+  --line-opaque: rgb(230, 230, 230);
+  --grey: gray;
+  --tab: silver;
+  --plexi: rgba(230, 230, 230, 0.9);
+  --pill-black-bg: #000;
+  --pill-black-fg: #fff;
+  --item-active-bg: #222;
+  --art-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  --ask-shadow: 0 10px 50px rgba(0, 0, 0, 0.1);
+  --error: #db0007;
+
+  --ease: cubic-bezier(0.18, 0, 0, 1);
+  --menu-height: 46px;
+  --bar-height: 50px;
+  --top-bar-height: 49px;
+  --sidebar-padding: 20px;
+  --uppercase-spacing: 0.1em;
+  /* Metropolis sits high in its line box; the legacy UI nudges uppercase text down. */
+  --font-nudge: 0.1em;
+  --handle: 30px;
+  --hit: 44px;
+
+  font-size: 18px;
+  color-scheme: light dark;
+}
+
+@media (pointer: fine) {
+  :root {
+    --font-nudge: 0.15em;
+    --handle: 24px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #fff;
+    --bg: #222;
+    --sidebar-bg: #1a1a1a;
+    --ultra-light: #333;
+    --bottom-bg: #000;
+    --menu-bg: #111;
+    --button-bg: rgba(255, 255, 255, 0.05);
+    --button-active: #666;
+    --line: rgba(255, 255, 255, 0.1);
+    --line-opaque: rgb(71, 71, 71);
+    --grey: rgba(255, 255, 255, 0.5);
+    --tab: #666;
+    --plexi: rgba(0, 0, 0, 0.9);
+    --pill-black-bg: #ddd;
+    --pill-black-fg: #000;
+    --item-active-bg: rgba(255, 255, 255, 0.5);
+    --art-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    --ask-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+    --error: #ff3e46;
+  }
+}
+
+@media (min-width: 621px) {
+  :root {
+    --sidebar-padding: 5vw;
+    --sidebar-width: 37vw;
+  }
+}
+
+@media (min-width: 900px) {
+  :root {
+    --sidebar-padding: 45px;
+    --sidebar-width: 330px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: Metropolis, Gotham, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  background-color: var(--bg);
+  color: var(--fg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  display: contents;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+  text-align: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1 {
+  font-weight: 500;
+  margin: 0 0 0.5em;
+}
+
+h2 {
+  font-size: 0.7em;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--uppercase-spacing);
+  color: var(--grey);
+  margin: 20px 0 10px;
+}
+
+p {
+  font-size: 0.8em;
+  line-height: 1.2em;
+  margin: 10px 0 15px;
+  color: rgb(128, 128, 128);
+}
+
+:root:not(.kiosk) p,
+:root:not(.kiosk) .item-value {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+p strong {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+p.error {
+  color: var(--error);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 10px 0;
+}
+
+/* Mask-coloured monochrome symbol: follows the text colour in both schemes. */
+.sym {
+  display: block;
+  flex-shrink: 0;
+  width: 21px;
+  height: 21px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / 23px no-repeat;
+  mask: var(--icon) center / 23px no-repeat;
+}
+
+.kiosk,
+.kiosk * {
+  touch-action: manipulation;
+}

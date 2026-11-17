@@ -1,0 +1,32 @@
+# touch-timeout (github.com/ajmccaus/touch-timeout @ 2ad5769, systemd/touch-timeout.service), adapted:
+# skipped without a backlight (it crash-loops otherwise); its -b/-t come from the env file the
+# audio-os helper renders, and an absent file means the daemon's own defaults.
+[Unit]
+Description=Touchscreen Brightness & Timeout Manager
+After=multi-user.target systemd-modules-load.service
+ConditionPathExistsGlob=/sys/class/backlight/*
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=-/var/lib/audio-os/touch-timeout.env
+ExecStart=/usr/bin/touch-timeout $TOUCH_TIMEOUT_ARGS
+Restart=on-failure
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+LogLevelMax=info
+
+TimeoutStartSec=10s
+TimeoutStopSec=5s
+
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/sys/class/backlight
+
+LimitNOFILE=64
+
+[Install]
+WantedBy=multi-user.target

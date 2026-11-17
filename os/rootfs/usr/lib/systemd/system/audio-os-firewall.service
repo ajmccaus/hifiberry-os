@@ -1,0 +1,18 @@
+# Loads the audio-os nftables table before any network comes up. Debian's nftables.service stays
+# disabled: it flushes the whole ruleset, so the two conflict rather than stack.
+[Unit]
+Description=audio-os firewall
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target shutdown.target
+Wants=network-pre.target
+Conflicts=nftables.service shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /usr/share/audio-os/firewall.nft
+ExecStop=/usr/sbin/nft destroy table inet audio_os
+
+[Install]
+WantedBy=sysinit.target

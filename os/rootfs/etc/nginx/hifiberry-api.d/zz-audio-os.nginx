@@ -1,0 +1,40 @@
+# audio-os front door, included at server level by hifiberry-webui's site: our UI at "/" and
+# "/ui/", the device helper at /api/device/. nginx drops inherited add_header in any location that
+# sets its own, so every location here that adds a header repeats the security headers.
+
+location = / {
+    auth_request off;
+    root /usr/share/audio-os/ui;
+    try_files /index.html =404;
+    add_header Cache-Control "no-cache" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https: http:; connect-src 'self' https://*.api.radio-browser.info https://all.api.radio-browser.info; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'" always;
+}
+
+# ^~ keeps the upstream regex location for images/fonts from claiming our assets.
+location ^~ /ui/ {
+    auth_request off;
+    root /usr/share/audio-os/ui;
+    try_files $uri =404;
+    expires 1y;
+    add_header Cache-Control "public, immutable" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "no-referrer" always;
+}
+
+# Loopback (the kiosk) needs no password; LAN clients go through the inherited auth_request.
+# No add_header here, so the server-level security headers are inherited.
+location /api/device/ {
+    satisfy any;
+    allow 127.0.0.1;
+    allow ::1;
+    deny all;
+    client_max_body_size 64k;
+    proxy_pass http://127.0.0.1:1090;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header Connection "";
+}

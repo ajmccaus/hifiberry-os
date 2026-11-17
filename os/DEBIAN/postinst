@@ -1,0 +1,40 @@
+#!/bin/sh
+# audio-os postinst: system users, unit enablement, nginx check + reload. Idempotent and
+# chroot-safe: everything that needs a running systemd is guarded on /run/systemd/system.
+set -e
+
+UNITS="audio-os-firewall.service audio-os-helper.service touch-timeout.service kiosk.service"
+
+if [ "$1" = configure ]; then
+    if ! getent passwd audio-os >/dev/null; then
+        adduser --system --group --home /var/lib/audio-os --no-create-home --shell /usr/sbin/nologin audio-os
+    fi
+    adduser --quiet audio-os video
+    if ! getent passwd kiosk >/dev/null; then
+        adduser --system --group --home /var/lib/kiosk --no-create-home --shell /usr/sbin/nologin kiosk
+    fi
+    for group in video render input; do
+        adduser --quiet kiosk "$group"
+    done
+
+    for unit in $UNITS; do
+        if deb-systemd-helper --quiet was-enabled "$unit"; then
+            deb-systemd-helper enable "$unit"
+        else
+            deb-systemd-helper update-state "$unit"
+        fi
+    done
+
+    if ! nginx -t; then
+        echo "audio-os: nginx configuration does not validate (see above)" >&2
+        exit 1
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl restart audio-os-firewall.service audio-os-helper.service
+        if systemctl is-active --quiet nginx.service; then
+            systemctl reload nginx.service
+        fi
+    fi
+fi

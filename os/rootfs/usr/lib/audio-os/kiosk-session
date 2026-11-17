@@ -1,0 +1,16 @@
+#!/bin/bash
+# The single client cage runs (as user kiosk): rotate the output, wait until nginx serves the UI so
+# the first paint is the UI rather than cog's error page, then become cog. Exits non-zero (and
+# systemd restarts the kiosk) if the UI never answers.
+set -euo pipefail
+
+/usr/lib/audio-os/kiosk-rotation output || echo "kiosk-session: rotation not applied" >&2
+
+for _ in $(seq 120); do
+    if curl -fs -o /dev/null --max-time 2 http://localhost/; then
+        exec cog --platform=wl --scale=1 --webprocess-failure=restart http://localhost/
+    fi
+    sleep 1
+done
+echo "kiosk-session: http://localhost/ did not answer within 2 minutes" >&2
+exit 1

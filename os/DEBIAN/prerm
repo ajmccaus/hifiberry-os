@@ -1,0 +1,7 @@
+#!/bin/sh
+# audio-os prerm: stop our services on removal (not on upgrade, where postinst restarts them).
+set -e
+
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl stop kiosk.service touch-timeout.service audio-os-helper.service audio-os-firewall.service || true
+fi

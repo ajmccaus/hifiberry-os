@@ -1,0 +1,11 @@
+{
+  "service": "audio-os",
+  "match_prefix": "/api/device/v1",
+  "default_tier": "risky",
+  "rules": [
+    { "tier": "ok", "methods": ["GET"], "paths": ["/**"] },
+    { "tier": "ok", "methods": ["PUT"], "paths": ["/screen", "/radio"] },
+    { "tier": "ok", "methods": ["POST"], "paths": ["/screen/wake"] },
+    { "tier": "risky", "methods": ["POST"], "paths": ["/power"] }
+  ]
+}

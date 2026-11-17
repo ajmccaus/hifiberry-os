@@ -1,0 +1,17 @@
+# audio-os first-boot network settings, applied once by cloud-init (netplan format).
+# Wired Ethernet works without any change here. For Wi-Fi, delete the leading "# " on the lines
+# below and keep the indentation exactly (spaces only, never tabs). Put your network name and
+# password between the quotes, and your two-letter country code (e.g. GB, DE, US) in
+# regulatory-domain: it decides which Wi-Fi channels may be used.
+#
+# network:
+#   version: 2
+#   wifis:
+#     renderer: NetworkManager
+#     wlan0:
+#       dhcp4: true
+#       optional: true
+#       regulatory-domain: "GB"
+#       access-points:
+#         "MyNetworkName":
+#           password: "MyWiFiPassword"
