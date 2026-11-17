@@ -39,7 +39,8 @@ test('brightness drag reaches touch-timeout (debounced, final value on release);
   expect(final).toBeGreaterThanOrEqual(22);
   expect(final).toBeLessThanOrEqual(26);
   await expect.poll(touchTimeoutEnv).toBe(`TOUCH_TIMEOUT_ARGS=-b ${raw(final)} -t 300\n`);
-  expect(systemctlLog()).toContain('try-restart touch-timeout.service');
+  // The helper writes the env file first and restarts the service after, so the log entry lags the file.
+  await expect.poll(systemctlLog).toContain('try-restart touch-timeout.service');
   expect(puts.length).toBeLessThanOrEqual(3);
   expect(puts.at(-1)).toEqual({ brightness: final });
 
