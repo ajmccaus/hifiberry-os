@@ -266,7 +266,10 @@ check "polkit: audio-os may not kill nginx" manage_denied nginx.service kill
 for action in org.freedesktop.login1.reboot org.freedesktop.login1.power-off-multiple-sessions; do
     check "polkit: audio-os has $action" pk_allowed "$action"
 done
-check "polkit: audio-os lacks org.freedesktop.login1.set-wall-message" pk_denied org.freedesktop.login1.set-wall-message
+# Canaries outside the grant. (Not set-wall-message: logind's policy has reboot imply it.)
+for action in org.freedesktop.login1.halt org.freedesktop.systemd1.manage-unit-files; do
+    check "polkit: audio-os lacks $action" pk_denied "$action"
+done
 in_box systemctl stop verify-pk-subject.service || true
 
 # First boot applies unit presets (machine-id "uninitialized"); nothing off at build time may come on.

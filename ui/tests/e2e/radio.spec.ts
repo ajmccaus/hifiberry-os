@@ -30,8 +30,9 @@ test('favourite added on a phone appears on the kiosk and plays with the ACR com
   await phone.getByRole('button', { name: 'Add Test Jazz' }).click();
   await expect(phone.locator('.station.favourite')).toHaveText('Test Jazz');
   expect(searched.some((u) => u.includes('/json/stations/byname/jazz?hidebroken=true&limit=50'))).toBe(true);
-  const stored = (await (await fetch(`${HELPER}/radio`)).json()) as { stations: { name: string; url: string }[] };
-  expect(stored.stations).toEqual([{ id: STATION.stationuuid, name: 'Test Jazz', url: STATION.url, favicon: '' }]);
+  // The list updates before the helper's PUT returns, so poll the stored copy rather than race it.
+  const stored = async () => ((await (await fetch(`${HELPER}/radio`)).json()) as { stations: unknown[] }).stations;
+  await expect.poll(stored).toEqual([{ id: STATION.stationuuid, name: 'Test Jazz', url: STATION.url, favicon: '' }]);
   phoneOk();
   await phoneCtx.close();
 
