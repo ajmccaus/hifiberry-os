@@ -8,7 +8,11 @@ set -euo pipefail
 MACHINE=audio-os-verify
 PLAYER=player
 # Units that fail in a container because the hardware they serve is absent there.
-NO_HARDWARE_UNITS="rpi-eeprom-update.service volume-restore.service hifiberry-bluetooth.service ble-provisioning.service bluetooth.service NetworkManager-wait-online.service systemd-growfs-root.service"
+NO_HARDWARE_UNITS="rpi-eeprom-update.service volume-restore.service volume-store.service hifiberry-bluetooth.service ble-provisioning.service bluetooth.service NetworkManager-wait-online.service systemd-growfs-root.service"
+# Units that fail only because of the container itself: no root block device (remount-fs), no
+# /dev/console with --console=pipe (firstboot's prompts; it has nothing to ask on this image), and
+# rtkit's RLIMIT_NPROC, which counts every process of its uid on the shared host kernel.
+CONTAINER_ONLY_UNITS="systemd-remount-fs.service systemd-firstboot.service rtkit-daemon.service"
 
 die() { echo "verify: $*" >&2; exit 1; }
 failures=0
@@ -110,7 +114,8 @@ check "first-boot volume seeded" python3 -c "import sqlite3,sys; v=sqlite3.conne
 check "UI document present" grep -q '<meta name="audio-os-ui"' "$root/usr/share/audio-os/ui/index.html"
 for f in /usr/lib/audio-os/audio_os_helper.py /usr/bin/touch-timeout /usr/share/audio-os/version \
         /etc/nginx/hifiberry-api.d/zz-audio-os.nginx /etc/hifiberry/auth.d/audio-os.json \
-        /usr/share/polkit-1/rules.d/50-audio-os.rules /usr/share/audio-os/firewall.nft; do
+        /usr/share/polkit-1/rules.d/50-audio-os.rules /usr/share/audio-os/firewall.nft \
+        /usr/lib/systemd/system-preset/10-audio-os.preset; do
     check "file $f" test -s "$root$f"
 done
 
@@ -197,21 +202,32 @@ player_systemctl --no-pager --plain --no-legend list-units 'shairport*' 'libresp
 
 http_status() { in_box curl -s -o /dev/null -w '%{http_code}' "$@"; }
 players_json() { in_box curl -fsS http://localhost/api/audiocontrol/players | python3 -m json.tool; }
+# ACR reports active before its web server listens; give it a bounded time to come up.
+for _ in $(seq 60); do players_json >/dev/null 2>&1 && break; sleep 2; done
 screen_unavailable() {
     in_box curl -fsS http://localhost/api/device/v1/screen |
         python3 -c 'import json, sys; sys.exit(json.load(sys.stdin)["available"] is not False)'
 }
 upstream_ui() { in_box sh -c 'curl -fsS http://localhost/services | cmp -s - /usr/share/hifiberry/webui/index.html'; }
-# shellcheck disable=SC2016  # $1 and $$ expand inside the container's shell
-# pk_allowed <action-id> [<detail-key> <detail-value>]...: pkcheck as user audio-os for its own process.
+# Polkit subjects as the helper really is: a process of user audio-os in a system service, outside
+# any login session. pkcheck runs as root (only root may pass --detail) against that process.
+in_box systemd-run --quiet --unit=verify-pk-subject --uid=audio-os --gid=audio-os -- sleep 900 || true
+pk_pid=$(in_box systemctl show --property=MainPID --value verify-pk-subject.service || true)
+as_helper() { in_box systemd-run --quiet --wait --pipe --collect --uid=audio-os --gid=audio-os -- "$@"; }
+# pk_allowed <action-id> [<detail-key> <detail-value>]...: 0 only when authorized.
 pk_allowed() {
     local action=$1; shift
     local details=()
     while [ $# -ge 2 ]; do details+=(--detail "$1" "$2"); shift 2; done
-    as_user audio-os sh -c 'action=$1; shift; exec pkcheck --action-id "$action" --process $$ "$@"' sh "$action" "${details[@]}"
+    in_box pkcheck --action-id "$action" --process "$pk_pid" "${details[@]}"
 }
+# pk_denied: pkcheck said "not authorized" (1) or "needs authentication" (2); errors (127) do not count.
+pk_denied() { local rc=0; pk_allowed "$@" || rc=$?; [ "$rc" = 1 ] || [ "$rc" = 2 ]; }
 manage() { pk_allowed org.freedesktop.systemd1.manage-units unit "$1" verb "$2"; }
+manage_denied() { pk_denied org.freedesktop.systemd1.manage-units unit "$1" verb "$2"; }
 not() { ! "$@"; }
+# systemctl refused by polkit (not failing for some other reason).
+systemctl_denied() { as_helper systemctl "$@" 2>&1 | grep -qiE 'access denied|authentication required'; }
 
 index=$(in_box curl -fsS http://localhost/ || true)
 check "/ serves the audio-os UI" grep -q '<meta name="audio-os-ui"' <<< "$index"
@@ -224,16 +240,25 @@ power=$(http_status -X POST -H 'Content-Type: application/json' -d '{"action":"b
 check "loopback POST /power with a bogus action reaches the helper (400, got $power)" test "$power" = 400
 check "/services still serves upstream's UI" upstream_ui
 
-check "polkit: audio-os may try-restart touch-timeout" as_user audio-os systemctl try-restart touch-timeout.service
-check "polkit: audio-os may not try-restart nginx" not as_user audio-os systemctl try-restart nginx.service
+check "polkit subject process running" test -n "$pk_pid" -a "$pk_pid" != 0
+check "polkit: audio-os may try-restart touch-timeout" as_helper systemctl try-restart touch-timeout.service
+check "polkit: audio-os may not try-restart nginx" systemctl_denied try-restart nginx.service
 check "polkit: audio-os may kill touch-timeout" manage touch-timeout.service kill
-check "polkit: audio-os may not restart touch-timeout" not manage touch-timeout.service restart
-check "polkit: audio-os may not stop touch-timeout" not manage touch-timeout.service stop
-check "polkit: audio-os may not kill nginx" not manage nginx.service kill
+check "polkit: audio-os may not restart touch-timeout" manage_denied touch-timeout.service restart
+check "polkit: audio-os may not stop touch-timeout" manage_denied touch-timeout.service stop
+check "polkit: audio-os may not kill nginx" manage_denied nginx.service kill
 for action in org.freedesktop.login1.reboot org.freedesktop.login1.power-off-multiple-sessions; do
     check "polkit: audio-os has $action" pk_allowed "$action"
 done
-check "polkit: audio-os lacks org.freedesktop.login1.set-wall-message" not pk_allowed org.freedesktop.login1.set-wall-message
+check "polkit: audio-os lacks org.freedesktop.login1.set-wall-message" pk_denied org.freedesktop.login1.set-wall-message
+in_box systemctl stop verify-pk-subject.service || true
+
+# First boot applies unit presets (machine-id "uninitialized"); nothing off at build time may come on.
+for unit in ssh.service ssh.socket userconfig.service nftables.service systemd-networkd.service \
+        systemd-networkd-wait-online.service systemd-resolved.service; do
+    check "$unit not enabled after first boot" not in_box systemctl is-enabled --quiet "$unit"
+    check "$unit not active after first boot" not in_box systemctl is-active --quiet "$unit"
+done
 
 listeners=$(in_box ss -Hlntu)
 unexpected=$(awk '
@@ -248,13 +273,17 @@ if [ -z "$unexpected" ]; then pass "no LAN listener outside the allowlist"; else
 
 check "firewall table loaded" in_box nft list table inet audio_os
 check "firewall file parses" in_box nft -c -f /usr/share/audio-os/firewall.nft
-analyze=$(in_box systemd-analyze verify audio-os-helper.service audio-os-firewall.service kiosk.service touch-timeout.service 2>&1 || true)
+# verify also loads every unit ours reference and warns about those; keep only lines about ours.
+analyze=$(in_box systemd-analyze verify audio-os-helper.service audio-os-firewall.service kiosk.service touch-timeout.service 2>&1 |
+    grep -E 'audio-os-helper|audio-os-firewall|kiosk|touch-timeout' || true)
 if [ -z "$analyze" ]; then pass "systemd-analyze verify: our units clean"; else fail "systemd-analyze verify:"; echo "$analyze" >&2; fi
 
 failed=$(in_box systemctl list-units --failed --plain --no-legend | awk '{ print $1 }')
 for unit in $failed; do
     if grep -qw -- "$unit" <<< "$NO_HARDWARE_UNITS"; then
         echo "  note  $unit failed (needs hardware absent in a container)"
+    elif grep -qw -- "$unit" <<< "$CONTAINER_ONLY_UNITS"; then
+        echo "  note  $unit failed (a limit of the container, not of the image)"
     else
         fail "unit $unit failed"
         in_box systemctl status --no-pager --lines=20 "$unit" >&2 || true

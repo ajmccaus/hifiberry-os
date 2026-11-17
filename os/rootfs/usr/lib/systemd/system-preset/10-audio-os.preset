@@ -1,0 +1,10 @@
+# audio-os: the image is configured completely at build time. Its first boot runs with machine-id
+# "uninitialized", and systemd then applies presets to every unit: without this file any unit no
+# preset names is enabled (it turned on ssh, userconfig, nftables and systemd-networkd/-resolved).
+# Debian's systemd presets in enable-only mode, so "disable *" turns nothing off that the build
+# enabled; it only stops first boot from enabling more. The image's boot test proves both.
+enable audio-os-firewall.service
+enable audio-os-helper.service
+enable touch-timeout.service
+enable kiosk.service
+disable *
