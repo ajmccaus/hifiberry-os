@@ -24,7 +24,7 @@ UtmpMode=user
 StandardInput=tty-fail
 StandardOutput=journal
 StandardError=journal
-Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_SESSION_TYPE=wayland COG_PLATFORM_DRM_CURSOR=0
 StateDirectory=kiosk
 ExecCondition=+/bin/sh -c 'grep -qsx connected /sys/class/drm/card*-*/status'
 ExecStartPre=+/usr/lib/audio-os/kiosk-rotation touch

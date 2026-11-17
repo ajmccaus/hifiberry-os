@@ -74,6 +74,7 @@ done
 for unit in userconfig.service nftables.service man-db.timer; do
     check "$unit not enabled" bash -c "! compgen -G '$root/etc/systemd/system/*.wants/$unit'"
 done
+check "getty@tty1 masked (kiosk owns tty1)" test "$(readlink "$root/etc/systemd/system/getty@tty1.service")" = /dev/null
 check "default target is multi-user" test "$(readlink "$root/etc/systemd/system/default.target")" = /usr/lib/systemd/system/multi-user.target
 for unit in pipewire.service mpd.service pipewire-api.service shairport.service librespot.service; do
     check "user unit $unit enabled" user_enabled "$unit"
@@ -194,7 +195,14 @@ screen_unavailable() {
 }
 upstream_ui() { in_box sh -c 'curl -fsS http://localhost/services | cmp -s - /usr/share/hifiberry/webui/index.html'; }
 # shellcheck disable=SC2016  # $1 and $$ expand inside the container's shell
-pk_allowed() { as_user audio-os sh -c 'pkcheck --action-id "$1" --process $$' sh "$1"; }
+# pk_allowed <action-id> [<detail-key> <detail-value>]...: pkcheck as user audio-os for its own process.
+pk_allowed() {
+    local action=$1; shift
+    local details=()
+    while [ $# -ge 2 ]; do details+=(--detail "$1" "$2"); shift 2; done
+    as_user audio-os sh -c 'action=$1; shift; exec pkcheck --action-id "$action" --process $$ "$@"' sh "$action" "${details[@]}"
+}
+manage() { pk_allowed org.freedesktop.systemd1.manage-units unit "$1" verb "$2"; }
 not() { ! "$@"; }
 
 index=$(in_box curl -fsS http://localhost/ || true)
@@ -210,6 +218,10 @@ check "/services still serves upstream's UI" upstream_ui
 
 check "polkit: audio-os may try-restart touch-timeout" as_user audio-os systemctl try-restart touch-timeout.service
 check "polkit: audio-os may not try-restart nginx" not as_user audio-os systemctl try-restart nginx.service
+check "polkit: audio-os may kill touch-timeout" manage touch-timeout.service kill
+check "polkit: audio-os may not restart touch-timeout" not manage touch-timeout.service restart
+check "polkit: audio-os may not stop touch-timeout" not manage touch-timeout.service stop
+check "polkit: audio-os may not kill nginx" not manage nginx.service kill
 for action in org.freedesktop.login1.reboot org.freedesktop.login1.power-off-multiple-sessions; do
     check "polkit: audio-os has $action" pk_allowed "$action"
 done

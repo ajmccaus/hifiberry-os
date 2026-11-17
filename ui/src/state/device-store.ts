@@ -42,16 +42,24 @@ export function deviceAddress(): string | null {
 
 /* ---------- screen ---------- */
 
+let screenSeq = 0;
+/** A reply is applied only if nothing changed locally since its request: no jumping back mid-drag. */
 const putScreen = (change: { brightness?: number; timeout?: number }): void => {
+  const seq = ++screenSeq;
   device
     .putScreen(change)
-    .then((value) => (screenSettings.value = { status: 'ready', value }))
-    .catch(() => void loadScreen());
+    .then((value) => {
+      if (seq === screenSeq) screenSettings.value = { status: 'ready', value };
+    })
+    .catch(() => {
+      if (seq === screenSeq) void loadScreen();
+    });
 };
 
 const brightnessGate = debounce<number>((brightness) => putScreen({ brightness }), 300);
 
 const setLocalScreen = (change: Partial<device.ScreenSettings>): void => {
+  screenSeq += 1;
   const s = screenSettings.value;
   if (s.status === 'ready') screenSettings.value = { status: 'ready', value: { ...s.value, ...change } };
 };

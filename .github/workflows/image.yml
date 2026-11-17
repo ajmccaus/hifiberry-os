@@ -52,10 +52,10 @@ jobs:
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
-    env:
-      AUDIO_OS_CACHE_DIR: ${{ runner.temp }}/base-image
     steps:
       - uses: actions/checkout@v4
+      - name: Base image cache location
+        run: echo "AUDIO_OS_CACHE_DIR=$RUNNER_TEMP/base-image" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: ui-dist

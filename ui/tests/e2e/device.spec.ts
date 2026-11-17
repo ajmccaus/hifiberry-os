@@ -69,47 +69,57 @@ test('kiosk: restart asks for confirmation, then calls power and shows the resta
   await expect.poll(systemctlLog).toContain('reboot');
 });
 
-test('LAN client: power needs a password - set it in the sheet, then the call is retried', async ({ page }, info) => {
-  test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
-  await openScreen(page, '#/system');
-  await expect(page.getByRole('link', { name: 'Advanced settings' })).toHaveAttribute('href', '/services');
-  await page.getByRole('button', { name: 'Power…' }).click();
-  await page.getByRole('dialog', { name: 'Power' }).getByRole('button', { name: 'Restart' }).click();
+test.describe('auth gateway', () => {
+  // The browser logs the gateway's 401 itself; that is the expected handshake, not an app error.
+  test.use({ allowHttpStatus: [401] });
 
-  const sheet = page.getByRole('dialog', { name: 'Set a password' });
-  await expect(sheet).toBeVisible();
-  await sheet.getByLabel('Password').fill('correct horse');
-  await sheet.getByRole('button', { name: 'Set password' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Restarting…' })).toBeVisible();
-  await expect.poll(systemctlLog).toContain('reboot');
-});
-
-test('LAN client: with a password set, a wrong one is refused and the right one logs in', async ({ page }, info) => {
-  test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
-  await fetch(`${STUBS}/__test/auth`, { method: 'POST', body: JSON.stringify({ protection: 'risky', password: 'pw' }) });
-  await openScreen(page, '#/system');
-  await page.getByRole('button', { name: 'Power…' }).click();
-  await page.getByRole('dialog', { name: 'Power' }).getByRole('button', { name: 'Shut down' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Password required' });
-  await sheet.getByLabel('Password').fill('nope');
-  await sheet.getByRole('button', { name: 'Continue' }).click();
-  await expect(sheet.getByRole('alert')).toHaveText('Wrong password.');
-  expect(systemctlLog()).not.toContain('poweroff');
-  await sheet.getByLabel('Password').fill('pw');
-  await sheet.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Shutting down…' })).toBeVisible();
-  await expect.poll(systemctlLog).toContain('poweroff');
-});
-
-test('a failing configurator only degrades the System screen', async ({ page }) => {
-  await fetch(`${STUBS}/__test/config`, { method: 'POST', body: JSON.stringify({ down: true }) });
-  try {
+  test('LAN client: power needs a password - set it in the sheet, then the call is retried', async ({ page }, info) => {
+    test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
     await openScreen(page, '#/system');
-    await expect(page.getByText('Some system details are not available right now.')).toBeVisible();
-    await expect(page.locator('.item', { hasText: 'Software' })).toContainText('0.1.0-test');
-    await expect(page.getByRole('button', { name: 'Power…' })).toBeVisible();
-    await expect(page.locator('.connecting')).toHaveCount(0);
-  } finally {
-    await fetch(`${STUBS}/__test/config`, { method: 'POST', body: JSON.stringify({ down: false }) });
-  }
+    await expect(page.getByRole('link', { name: 'Advanced settings' })).toHaveAttribute('href', '/services');
+    await page.getByRole('button', { name: 'Power…' }).click();
+    await page.getByRole('dialog', { name: 'Power' }).getByRole('button', { name: 'Restart' }).click();
+
+    const sheet = page.getByRole('dialog', { name: 'Set a password' });
+    await expect(sheet).toBeVisible();
+    await sheet.getByLabel('Password').fill('correct horse');
+    await sheet.getByRole('button', { name: 'Set password' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Restarting…' })).toBeVisible();
+    await expect.poll(systemctlLog).toContain('reboot');
+  });
+
+  test('LAN client: with a password set, a wrong one is refused and the right one logs in', async ({ page }, info) => {
+    test.skip(isKiosk(info.project.name), 'LAN-only behaviour');
+    await fetch(`${STUBS}/__test/auth`, { method: 'POST', body: JSON.stringify({ protection: 'risky', password: 'pw' }) });
+    await openScreen(page, '#/system');
+    await page.getByRole('button', { name: 'Power…' }).click();
+    await page.getByRole('dialog', { name: 'Power' }).getByRole('button', { name: 'Shut down' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Password required' });
+    await sheet.getByLabel('Password').fill('nope');
+    await sheet.getByRole('button', { name: 'Continue' }).click();
+    await expect(sheet.getByRole('alert')).toHaveText('Wrong password.');
+    expect(systemctlLog()).not.toContain('poweroff');
+    await sheet.getByLabel('Password').fill('pw');
+    await sheet.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Shutting down…' })).toBeVisible();
+    await expect.poll(systemctlLog).toContain('poweroff');
+  });
+});
+
+test.describe('configurator down', () => {
+  // The stub answers 500 on purpose; the browser logs each such response itself.
+  test.use({ allowHttpStatus: [500] });
+
+  test('a failing configurator only degrades the System screen', async ({ page }) => {
+    await fetch(`${STUBS}/__test/config`, { method: 'POST', body: JSON.stringify({ down: true }) });
+    try {
+      await openScreen(page, '#/system');
+      await expect(page.getByText('Some system details are not available right now.')).toBeVisible();
+      await expect(page.locator('.item', { hasText: 'Software' })).toContainText('0.1.0-test');
+      await expect(page.getByRole('button', { name: 'Power…' })).toBeVisible();
+      await expect(page.locator('.connecting')).toHaveCount(0);
+    } finally {
+      await fetch(`${STUBS}/__test/config`, { method: 'POST', body: JSON.stringify({ down: false }) });
+    }
+  });
 });

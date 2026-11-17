@@ -65,15 +65,21 @@ export const stack = (cmd: 'acr-down' | 'acr-up'): void => {
   execFileSync('bash', [`${UI}tests/stack.sh`, cmd], { stdio: 'inherit' });
 };
 
+// What the browser itself logs when the backend is unreachable (only tolerated where a test takes it down).
 const NETWORK_NOISE = /Failed to load resource|WebSocket|ERR_CONNECTION|status of 50\d/i;
+// The browser's own log line for an HTTP error response; tolerated only for statuses a test provokes.
+const HTTP_STATUS_LOG = /^Failed to load resource: the server responded with a status of (\d{3})\b/;
 const ALLOWED_FOREIGN = /^https:\/\/([a-z0-9-]+\.)*api\.radio-browser\.info$/;
 
 /** Collects console errors and cross-origin requests; returns the assertion to run at the end. */
-export function watch(page: Page, opts: { allowNetworkErrors?: boolean } = {}): () => void {
+export function watch(page: Page, opts: { allowNetworkErrors?: boolean; allowHttpStatus?: readonly number[] } = {}): () => void {
   const errors: string[] = [];
   const foreign: string[] = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' && !(opts.allowNetworkErrors && NETWORK_NOISE.test(m.text()))) errors.push(m.text());
+    if (m.type() !== 'error') return;
+    const status = HTTP_STATUS_LOG.exec(m.text())?.[1];
+    if (status !== undefined && opts.allowHttpStatus?.includes(Number(status))) return;
+    if (!(opts.allowNetworkErrors && NETWORK_NOISE.test(m.text()))) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('request', (r) => {
@@ -87,11 +93,12 @@ export function watch(page: Page, opts: { allowNetworkErrors?: boolean } = {}): 
   };
 }
 
-export const test = base.extend<{ allowNetworkErrors: boolean; hygiene: void }>({
+export const test = base.extend<{ allowNetworkErrors: boolean; allowHttpStatus: number[]; hygiene: void }>({
   allowNetworkErrors: [false, { option: true }],
+  allowHttpStatus: [[], { option: true }],
   hygiene: [
-    async ({ page, allowNetworkErrors }, use) => {
-      const check = watch(page, { allowNetworkErrors });
+    async ({ page, allowNetworkErrors, allowHttpStatus }, use) => {
+      const check = watch(page, { allowNetworkErrors, allowHttpStatus });
       await use();
       check();
     },
@@ -112,7 +119,14 @@ export async function openScreen(page: Page, hash: string): Promise<void> {
     await page.getByRole('button', { name: 'Close Now Playing' }).click();
     await expect(np).toHaveCount(0);
   }
+  await settled(page);
 }
+
+/** Waits for running CSS animations/transitions (screen slide-in) so measured boxes stay put. */
+export const settled = (page: Page): Promise<void> =>
+  page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+  });
 
 export async function openNowPlaying(page: Page): Promise<void> {
   await page.goto('/');

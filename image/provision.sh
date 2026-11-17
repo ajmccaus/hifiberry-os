@@ -98,6 +98,9 @@ EOF
 step "services: kiosk owns tty1, no first-boot user wizard, no unused work"
 systemctl set-default multi-user.target
 systemctl disable userconfig.service man-db.timer nftables.service
+# cancel-rename (run when cloud-init creates the first user) enables and starts getty@tty1, which
+# Conflicts= with kiosk.service and would take the panel away; masked, those calls fail harmlessly.
+systemctl mask getty@tty1.service
 rm -f /etc/ssh/sshd_config.d/rename_user.conf
 
 step "accounts locked, hostname"
@@ -110,7 +113,8 @@ step "boot partition: settings file and cloud-init templates"
 install -m 0644 "$IN/boot/audio-os.conf" "$IN/boot/user-data" "$IN/boot/network-config" /boot/firmware/
 
 step "first-boot state as the stock image expects it"
-apt-get clean
+rm -f /var/cache/apt/*.bin
+mountpoint -q /var/cache/apt/archives || apt-get clean   # a bound .deb cache stays with the build host
 rm -rf /var/lib/apt/lists/* /var/cache/debconf/*-old /var/lib/dpkg/*-old
 rm -f /var/log/apt/* /var/log/dpkg.log /var/log/alternatives.log /etc/ssh/ssh_host_* /etc/uuid
 printf 'uninitialized\n' > /etc/machine-id

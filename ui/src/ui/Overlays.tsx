@@ -25,10 +25,12 @@ export function PasswordSheet() {
   const prompt = authPrompt.value;
   const [password, setPassword] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  const open = prompt !== null;
+  // Clear on close, not on open: an effect that clears after opening would erase what was already typed.
   useEffect(() => {
-    setPassword('');
-    if (prompt) window.setTimeout(() => input.current?.focus(), 50);
-  }, [prompt?.hint, prompt !== null]);
+    if (!open) setPassword('');
+    else input.current?.focus();
+  }, [open]);
   const setting = prompt?.hint === 'set-password';
   const submit = (e: Event) => {
     e.preventDefault();

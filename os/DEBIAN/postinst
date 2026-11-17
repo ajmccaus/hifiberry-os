@@ -18,6 +18,7 @@ if [ "$1" = configure ]; then
     done
 
     for unit in $UNITS; do
+        deb-systemd-helper unmask "$unit" >/dev/null || true
         if deb-systemd-helper --quiet was-enabled "$unit"; then
             deb-systemd-helper enable "$unit"
         else

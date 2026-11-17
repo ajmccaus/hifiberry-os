@@ -129,7 +129,22 @@ export function command(cmd: string): void {
   if (name) acr.sendCommand(name, cmd).catch(ignore);
 }
 
-export const playerCommand = (name: string, cmd: string): Promise<void> => acr.sendCommand(name, cmd);
+/**
+ * Play/pause one player from Sources. Starting a player that is not the active one pauses the
+ * active one first (ACR only switches when the new player reports playing by itself), and the
+ * player list is re-read afterwards because not every backend sends an event for a command.
+ */
+export async function playerCommand(name: string, cmd: 'play' | 'pause' | 'playpause'): Promise<void> {
+  const current = player.value;
+  if (cmd !== 'pause' && current && current.name !== name && transport(current).toggle === 'pause') {
+    await acr.sendCommand(current.name, transport(current).toggleCommand ?? 'pause').catch(ignore);
+  }
+  try {
+    await acr.sendCommand(name, cmd);
+  } finally {
+    scheduleResync();
+  }
+}
 
 let recheck: number | null = null;
 function volumeFailed(): void {
