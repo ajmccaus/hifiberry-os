@@ -1,0 +1,71 @@
+# Handoff — build state and how to resume
+
+Working state for whoever (a Claude session or the owner) continues the build. Update the
+"State" section at every pause; delete this file when the first image has passed its device test.
+
+## Goal
+A flashable SD image for a Raspberry Pi 4 (2 GB) + official 7" touchscreen + HiFiBerry Amp2:
+upstream HiFiBerry NG audio stack on Raspberry Pi OS Lite (Debian 13), with our own minimal
+B&O-style web UI as the front door. Done = CI publishes an image that passes `image/verify.sh`,
+and the owner's device test (docs/device-test.md, still to be written) passes.
+
+## Where everything is
+- `docs/dev/FACTS.md` — verified facts about the base image and upstream packages, the repo
+  layout, engineering rules, and the interfaces between ui / helper / os / image. Source of truth.
+- `docs/dev/ACR-CONTRACT.md` — the audio controller's API, verified against its source and a
+  live instance. `docs/dev/LOOK.md` + `docs/dev/reference-shots/` — the visual reference.
+- `docs/dev/brief-ui.md`, `docs/dev/brief-system.md` — the exact briefs given to the two builders.
+- `docs/dev/tools/` — launchers written for the scratch area (they use paths relative to it):
+  `run-acr.sh` (real ACR 0.25.0 + MPD on 127.0.0.1:1080), `run-legacy.sh` (legacy UI on :18080),
+  `capture.js` (reference screenshots).
+
+## Decisions (owner-confirmed, do not reopen)
+- Buildroot is retired (branch `buildroot-legacy`). The legacy UI port is reference only.
+- New UI (Vite + Preact + TypeScript) at `/`; upstream's UI stays as "Advanced settings".
+- Product = flashable image built in GitHub Actions (`ubuntu-24.04-arm`), published as a release.
+- Sources in the first image: Spotify Connect, AirPlay, Bluetooth, internet radio.
+- No decision-record process. Old branches are deleted once nothing here needs them.
+- Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
+
+## State (2026-11-17 01:15 UTC — paused for the usage limit)
+| Part | State |
+|---|---|
+| `helper/` | Done, reviewed, 32 tests green. |
+| `ui/` | App code written, e2e tests being written. NOT reviewed, NOT run, no visual comparison yet. |
+| `os/`, `image/`, workflow | Mostly written (builder was on the boot-partition templates). NOT reviewed; no image build has run locally or in CI. |
+| Docs | README is a stub; device-test.md and a new CLAUDE.md not written. |
+| Branch cleanup | Not done: `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `claude/adopt-one21tools`, `hbosng` still exist. Fast-forwarding `master` to the product branch is also pending. |
+
+## Next steps, in order
+1. Finish `ui/`: run typecheck/unit/e2e (Chromium + WebKit) against the real ACR and helper;
+   compare screenshots with `docs/dev/reference-shots/`; review the code.
+2. Finish `os/` + `image/`: review; one full local `image/build.sh` run (emulated, slow);
+   `image/verify.sh` offline part.
+3. Push; iterate on the CI run until the `image` job (build + nspawn boot test) is green and the
+   prerelease `dev` carries the `.img.xz`.
+4. Write README, CLAUDE.md, `docs/device-test.md` (flash, first boot incl. the one automatic
+   reboot for sound-card detection, what to check, how to report).
+5. Delete the old branches; fast-forward `master`.
+
+## Rebuilding the scratch area (the container is ephemeral)
+Under a scratch dir `S`: `S/ref/acr` = github.com/hifiberry/acr @ 47f2b51 (`cargo build --release`,
+needs libasound2-dev pkg-config libssl-dev; ~5 min); `S/ref/upstream-os` = hifiberry/hifiberry-os
+main; `S/ref/{hbos-ui,configurator,hbos-bluetooth,pipewire-api}` = the hifiberry repos of those
+names; `S/ref/touch-timeout` = ajmccaus/touch-timeout; `S/ref/beocreate-port` =
+`git archive origin/claude/beocreate-debian beocreate-debian` (legacy UI + mocks; only while that
+branch exists); `S/debs-web/x/<pkg>` = .debs from https://debianrepo.hifiberry.com extracted with
+`dpkg-deb -x/-e`. Copy `docs/dev/tools/*` to `S/ref/`. Base image: see FACTS.
+Container needs: qemu-user-static + binfmt registration for arm64 chroots, mtools (no vfat
+module), apt in chroots via https mirrors + `$HTTPS_PROXY` + CA bundle.
+
+## Pause / resume protocol (usage limit)
+- The session's rate-limit state is readable: `get_session` (no id) ->
+  `external_metadata.rate_limit_info` = `{status, resetsAt (epoch s), rateLimitType}`.
+  `status: "allowed"` = fine; `"allowed_warning"` = past the warning threshold -> pause.
+- While builders run in the background, a check-in is scheduled every 15 minutes. Each check-in
+  and each builder hand-back reads the status first. On `allowed_warning`: stop the builders,
+  commit + push everything (including this file's State section), schedule a resume one minute
+  after `resetsAt`, and stop.
+- Builders are briefed to work in small steps and keep their files on disk in the repo tree, so a
+  stop loses at most the step in progress. Resume a stopped builder by messaging it; if its
+  transcript is gone, start a new one from its brief in this directory plus the State table.
