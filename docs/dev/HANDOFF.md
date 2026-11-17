@@ -27,16 +27,17 @@ and the owner's device test (docs/device-test.md, still to be written) passes.
 - No decision-record process. Old branches are deleted once nothing here needs them.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 03:15 UTC — resumed; two fresh builders running)
+## State (2026-11-17 04:40 UTC — PAUSED at owner-reported 70% usage; resume after 08:10 UTC reset)
 | Part | State |
 |---|---|
 | `helper/` | Done, reviewed, 32 tests green. |
-| `ui/` | App code written, e2e tests being written. NOT reviewed, NOT run, no visual comparison yet. |
-| `os/`, `image/`, workflow | Mostly written (builder was on the boot-partition templates). NOT reviewed; no image build has run locally or in CI. |
+| `ui/` | DONE and manager-verified (commit dc952ebc): typecheck clean, 26 unit tests, Playwright 56 passed / 12 skipped on Chromium + WebKit, screenshots compared with the reference. |
+| `os/`, `image/`, workflow | Builder (stopped at the pause, no hand-back report) built the .deb and ran `image/build.sh` locally four times under emulation. Run 2 failed: `hifiberry-bluetooth` postinst calls live systemctl in the chroot (provision.sh has a systemctl shim for this — check it covers that call). Run 3 failed: our postinst ran `nginx -t`, which cannot open [::]:80 in the build chroot; postinst now runs it on a live system only and `verify.sh` runs `nginx -t` in the boot test instead. Run 4 was killed by the pause mid-upgrade (its initramfs error is an artifact of the kill, not a finding). NOT yet done: a complete local build, `verify.sh` part (a), manager review of os/ image/ workflow, any CI run. |
 | Docs | README is a stub; device-test.md and a new CLAUDE.md not written. |
 | Branch cleanup | Not done: `claude/beocreate-debian`, `claude/hifiberry-buildroot-review-u7omrz`, `claude/touch-timeout-package`, `claude/adopt-one21tools`, `hbosng` still exist. Fast-forwarding `master` to the product branch is also pending. |
 
 ## Next steps, in order
+0. (Resume point) Start ONE fresh system builder from `docs/dev/brief-system.md` + this State row: re-register arm64 binfmt, rebuild the .deb, get one complete local `image/build.sh` + `verify.sh` (a), then push and iterate on the CI `image` job. Step 1 below (UI) is finished.
 1. Finish `ui/`: run typecheck/unit/e2e (Chromium + WebKit) against the real ACR and helper;
    compare screenshots with `docs/dev/reference-shots/`; review the code.
 2. Finish `os/` + `image/`: review; one full local `image/build.sh` run (emulated, slow);
@@ -96,3 +97,5 @@ module), apt in chroots via https mirrors + `$HTTPS_PROXY` + CA bundle.
   10 minutes) estimate `(cost_now - cost_at_window_start) / 0.48`; pause at >= 70% so the
   overshoot stays under the owner's 80% limit. Re-baseline when `resetsAt` changes. Other sessions
   on the account also count, so recalibrate whenever the owner quotes a percentage.
+
+- Usage estimate lags: `cost_usd` only refreshes when a manager turn ends and under-reads builder spend (estimate said 50% when the owner saw ~65–70%). Use $0.35 per 1% as the working rate, pause at an estimated 55%, and treat any owner-quoted percentage as the authority. Manager check-in turns themselves cost about 1% each: check every 15 minutes, not 10.
