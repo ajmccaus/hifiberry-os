@@ -169,6 +169,9 @@ as_user() { local user=$1; shift; in_box setpriv --reuid="$user" --regid="$user"
 player_uid=$(awk -F: -v u="$PLAYER" '$1 == u { print $3 }' "$root/etc/passwd")
 player_systemctl() { as_user "$PLAYER" env XDG_RUNTIME_DIR="/run/user/$player_uid" systemctl --user "$@"; }
 
+# The leader registers before systemd has started inside; is-system-running answers "offline"
+# until /run/systemd/system exists, so wait for that first.
+for _ in $(seq 120); do in_box test -d /run/systemd/system && break; sleep 1; done
 state=$(in_box timeout 600 systemctl is-system-running --wait || true)
 echo "  system state: $state"
 
@@ -179,9 +182,12 @@ done
 check "nginx -t" in_box nginx -t
 
 user_units=(pipewire.service mpd.service pipewire-api.service)
-for _ in $(seq 60); do
-    player_systemctl is-active --quiet "${user_units[@]}" && break
-    sleep 2
+# is-active with several units succeeds when any one is active, so wait on each in turn.
+for unit in "${user_units[@]}"; do
+    for _ in $(seq 60); do
+        player_systemctl is-active --quiet "$unit" 2>/dev/null && break
+        sleep 2
+    done
 done
 for unit in "${user_units[@]}"; do
     check "$PLAYER user unit $unit active" player_systemctl is-active --quiet "$unit"
