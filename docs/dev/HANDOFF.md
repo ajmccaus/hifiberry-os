@@ -25,16 +25,16 @@ owner's device test (`docs/device-test.md`) passes.
 - Sources in the first image: Spotify Connect, AirPlay, Bluetooth, internet radio.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 14:05 UTC)
+## State (2026-11-17 14:20 UTC)
 A flashable image is published: every green build of the working branch updates the prerelease
 `dev` (`audio-os-0.1.0+git<commit>.img.xz` + `.sha256`; the release notes name the commit and the
 build time). Nothing has run on a real Pi yet.
 
 - Pull request #4 (working branch to `master`) is v0.1.0: the tag-release path, American English
-  throughout, the documentation cleanup and the fixes below. CI was green on it (run #29), and
-  `master` is fast-forwarded to it together with this note. A build of `master` publishes the
-  prerelease `build-<date>-<commit>`; that has not happened yet (run #25, the last one on `master`,
-  failed on the `ui-e2e` problem below).
+  throughout, the documentation cleanup and the fixes below. It is merged (`master` fast-forwarded
+  at 14:00 UTC after a green run #29). Run #30 on `master` was green and published the prerelease
+  `build-20261117-88a4efa` with `audio-os-0.1.0+git88a4efa.img.xz` and its `.sha256`: the first
+  image built from `master`.
 - The workflow also runs for `v*` tags, builds with the tag as the version and publishes a release
   named after the tag. That path has not run yet. This session's git access cannot push tags or
   delete branches; the owner does both.
@@ -64,15 +64,14 @@ build time). Nothing has run on a real Pi yet.
 | Branches | Only `master`, `buildroot-legacy` and the working branch exist. |
 
 ## Next steps, in order
-1. Check that the run on `master` after the merge published `build-<date>-<commit>` with the
-   image and its `.sha256`. Do not push to `master` while that run is in progress.
-2. Owner flashes that image (or `dev`; the two differ only in the version string) and runs
-   `docs/device-test.md` on the hardware.
-3. Fix what the device test finds; each fix goes through CI before the next image.
-4. After the device test passes, the owner creates tag `v0.1.0` on `master` (GitHub: Releases →
+1. Owner flashes the image from `build-20261117-88a4efa` and runs `docs/device-test.md` on the
+   hardware.
+2. Fix what the device test finds; each fix goes through CI before the next image. Do not push to
+   `master` while a run on it is in progress.
+3. After the device test passes, the owner creates tag `v0.1.0` on `master` (GitHub: Releases →
    Draft a new release → tag `v0.1.0`, target `master`). It is the first run of the tag path: check
    that the release gets `audio-os-0.1.0.img.xz` and its `.sha256`.
-5. When touch-timeout v0.9 is released: move the pin, switch the helper's wake to the FIFO, drop one polkit permission.
+4. When touch-timeout v0.9 is released: move the pin, switch the helper's wake to the FIFO, drop one polkit permission.
 
 ## Notes that live nowhere else
 - `ui/tests/stack.sh` starts ACR with `docs/dev/tools/run-acr.sh`; `$ACR_SCRIPT` names another launcher.
