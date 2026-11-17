@@ -58,6 +58,26 @@ branch exists); `S/debs-web/x/<pkg>` = .debs from https://debianrepo.hifiberry.c
 Container needs: qemu-user-static + binfmt registration for arm64 chroots, mtools (no vfat
 module), apt in chroots via https mirrors + `$HTTPS_PROXY` + CA bundle.
 
+## Notes that live nowhere else
+- Scratch dir of the first session: /tmp/claude-0/-home-user-hifiberry-os/44bcaa47-cf01-555d-b7c0-a66b4b33ff65/scratchpad
+  (`ref/`, `debs-web/`, `debs-base/`, `img/` = base image + mounted copy, `sys/`, `ui-work/`, `ui-shots/`).
+- Stopped builders (same session only): UI `a5c725653849936bd`, system/image `a221e88b99d821bfa`.
+  Their transcripts are large and cold after a pause; a fresh builder briefed with "continue from the
+  files in the tree" + the brief + the State table is probably cheaper than resuming them.
+- Integration notes sent to the system builder but possibly never read:
+  1. nginx `/api/device/` must `proxy_set_header Host $http_host;` — the helper refuses non-GET
+     requests whose `Origin` host differs from the `Host` it sees.
+  2. Every non-GET to the helper needs `Content-Type: application/json` (also body-less POSTs);
+     verify.sh's bogus power action then returns 400 from loopback.
+  3. The helper calls exactly: `systemctl try-restart touch-timeout.service`,
+     `systemctl kill --signal=SIGUSR1 touch-timeout.service`, `systemctl reboot`, `systemctl poweroff`
+     — the polkit rule must allow these four for user `audio-os` and nothing broader.
+  4. touch-timeout (root) must be able to read /var/lib/audio-os/touch-timeout.env.
+- Review standard: every builder claim is re-verified by the manager (run the tests, read the
+  code, view the screenshots) before it is called done; UNVERIFIED lists go into device-test.md.
+- Session compaction: the manager cannot trigger it; the owner can (`/compact`). Cheapest moment
+  is while the cache is warm or right at a resume before any work. Everything needed is in docs/dev/.
+
 ## Pause / resume protocol (usage limit)
 - The session's rate-limit state is readable: `get_session` (no id) ->
   `external_metadata.rate_limit_info` = `{status, resetsAt (epoch s), rateLimitType}`.
