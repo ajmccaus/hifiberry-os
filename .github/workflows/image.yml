@@ -96,7 +96,7 @@ jobs:
         run: tail -n 40 ui/tests/.stack/*.log docs/dev/tools/run/*.log docs/dev/tools/run/mpd/mpd.log || true
 
   image:
-    needs: checks
+    needs: [checks, ui-e2e]
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write

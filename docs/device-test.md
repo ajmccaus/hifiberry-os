@@ -152,6 +152,8 @@ The target is comfortable operation in 2 GB: record `available` memory from `fre
 
 Everything below could not be proved by the build, the offline checks, or the container boot test.
 
+- That `systemctl --failed` is empty on the Pi. In the container boot test `volume-store.service`, `systemd-remount-fs.service`, `systemd-firstboot.service` and `rtkit-daemon.service` fail and are excused as limits of the container (no sound card, no root block device, no console); on the Pi none of them may fail.
+- That `enable_ssh: true` in `user-data` still turns SSH on. The image stops first boot from enabling any unit by itself (`10-audio-os.preset`), and the boot test only proves SSH stays off without `user-data`.
 - That the Amp2 is detected and `dtoverlay=hifiberry-dacplus-std` is written, and that `config-detect.service` reboots the Pi exactly once and then settles. The container boot test masks `config-detect.service`.
 - That the first-boot volume of 20 percent is applied to the real mixer control "Digital" and that the Amp2 output is safe.
 - Real ALSA volume behaviour and the mixer control name.
