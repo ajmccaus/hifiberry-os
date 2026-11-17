@@ -1,0 +1,9 @@
+node_modules/
+dist/
+__pycache__/
+*.deb
+*.img
+*.img.xz
+*.sha256
+test-results/
+playwright-report/
