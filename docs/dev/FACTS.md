@@ -49,9 +49,17 @@ docs/      device-test.md (owner's on-device checklist); docs/dev/ (these notes,
   .deb, builds the image, runs `image/verify.sh` (offline assertions, then a systemd-nspawn boot
   test) and publishes. A `v*` tag publishes a release named after the tag, with the tag as the
   package version (`v0.1.0` -> `0.1.0`); a push to `master` publishes a prerelease
-  `build-<date>-<short sha>`; a push to a `claude/**` branch replaces the prerelease `dev`. Each
-  release holds `audio-os-<version>.img.xz` and its `.sha256`. Pushes that only touch `docs/**` or
-  `*.md` do not run it.
+  `build-<date>-<short sha>`; a push to a `claude/**` branch updates the prerelease `dev` in place
+  (the new image is uploaded, then the previous one is removed; the release notes name the built
+  commit, and the `dev` tag stays where it was first created). Each release holds
+  `audio-os-<version>.img.xz` and its `.sha256`. Pushes that only touch `docs/**` or `*.md` do not
+  run it. Runs on one ref are serialized, so a later push builds only after the earlier run ends.
+- The workflow's token and tags: `gh release create --target <commit>` was refused with HTTP 403
+  "Resource not accessible by integration" in run #26, where a push during the build had changed
+  the workflow file, and accepted in run #27 for a commit that was no longer the branch head but
+  had the same workflow file as the head. GitHub does not document the rule (user reports:
+  https://github.com/orgs/community/discussions/121022). The publish step therefore never deletes
+  a release before its replacement is uploaded.
 
 ## Verified facts: upstream HiFiBerry NG (versions from the live repo, Nov 2026)
 Read from the extracted .debs and from the source of hifiberry-os, acr, hbos-ui, configurator,

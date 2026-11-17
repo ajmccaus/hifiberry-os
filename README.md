@@ -72,7 +72,7 @@ Edit these files with spaces for indentation, never tabs. `network-config` and `
 
 CI (`.github/workflows/image.yml`) runs on every push to `master` and `claude/**` branches (except changes that only touch `docs/` or `.md` files), on `v*` tags, and on manual dispatch. The `checks` job runs the shell lint, the helper tests, and the UI typecheck, unit tests and build. The `ui-e2e` job runs the UI browser tests. The `image` job runs after both: it builds the `audio-os` .deb, then the image, then `image/verify.sh`, then publishes. The exact commands are in `CLAUDE.md`, section "Checks".
 
-The image job runs on an arm64 GitHub runner. It downloads the pinned Raspberry Pi OS Lite base image (checking its sha256), provisions it in a chroot, shrinks and compresses it, boot-tests it in a container, and publishes it. A `v*` tag publishes a release named after the tag; a push to `claude/**` replaces the prerelease `dev`; a push to `master` creates a prerelease `build-<date>-<commit>`.
+The image job runs on an arm64 GitHub runner. It downloads the pinned Raspberry Pi OS Lite base image (checking its sha256), provisions it in a chroot, shrinks and compresses it, boot-tests it in a container, and publishes it. A `v*` tag publishes a release named after the tag; a push to `claude/**` updates the prerelease `dev` in place (its notes name the commit that was built); a push to `master` creates a prerelease `build-<date>-<commit>`.
 
 ## Repository layout
 

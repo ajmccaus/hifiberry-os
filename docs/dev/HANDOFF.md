@@ -25,9 +25,10 @@ owner's device test (`docs/device-test.md`) passes.
 - Sources in the first image: Spotify Connect, AirPlay, Bluetooth, internet radio.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 13:15 UTC)
-A flashable image is published: every green build of the working branch replaces the prerelease
-`dev` (`audio-os-0.1.0+git<commit>.img.xz` + `.sha256`). Nothing has run on a real Pi yet.
+## State (2026-11-17 13:40 UTC)
+A flashable image is published: every green build of the working branch updates the prerelease
+`dev` (`audio-os-0.1.0+git<commit>.img.xz` + `.sha256`; the release notes name the commit and the
+build time). Nothing has run on a real Pi yet.
 
 - Pull request #4 (working branch to `master`) is v0.1.0: the tag-release path, American English
   throughout, the documentation cleanup and the fix below. Merge it once CI is green on its head.
@@ -40,6 +41,15 @@ A flashable image is published: every green build of the working branch replaces
   races the command), which ACR reports as 500. The station is now a real stream served by the test
   stubs, and the error path has its own test. On a device the same 500 is the correct answer for a
   dead station; the UI shows "<name> could not be started."
+- Run #26 built and verified its image, then failed to publish it: the step deleted `dev` and
+  GitHub refused the new tag (HTTP 403), so no `dev` image existed from 13:06 to 13:23 UTC. A push
+  during the build had changed the workflow file; `docs/dev/FACTS.md` has what is known about the
+  rule. The step now updates `dev` in place and removes the old image only after the new one is
+  uploaded. A `master` build can still be refused if `master`'s workflow file changes while it
+  runs; the job then says to start the workflow on `master` again.
+- `device.spec.ts` read the fake systemctl log once, right after the env file appeared, although
+  the helper restarts the service after writing the file. It failed in 3 of 4 browser projects on
+  a slow machine and now polls like the other checks in that file.
 
 | Part | State |
 |---|---|

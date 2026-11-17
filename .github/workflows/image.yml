@@ -142,20 +142,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes="Built $(date -u '+%Y-%m-%d %H:%M UTC') from $GITHUB_REF_NAME at $GITHUB_SHA."
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # The owner may have drafted the release by hand; either way the image ends up on it.
             gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-              gh release create "$GITHUB_REF_NAME" --verify-tag --title "audio-os $GITHUB_REF_NAME" \
-                --notes "Built from $GITHUB_REF_NAME at $GITHUB_SHA."
+              gh release create "$GITHUB_REF_NAME" --verify-tag --title "audio-os $GITHUB_REF_NAME" --notes "$notes"
             gh release upload "$GITHUB_REF_NAME" --clobber "$IMAGE" "$IMAGE.sha256"
             exit 0
           fi
+          # GitHub refused this token (403) a tag at this commit when a push during the build had
+          # changed the workflow file, so nothing below removes a release before its replacement exists.
           if [ "$GITHUB_REF_NAME" = master ]; then
             tag="build-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
-          else
-            tag=dev
-            gh release delete dev --yes --cleanup-tag || true
+            if ! gh release create "$tag" --prerelease --target "$GITHUB_SHA" --title "audio-os $tag" \
+              --notes "$notes" "$IMAGE" "$IMAGE.sha256"; then
+              echo "::error::$tag was not published. If master's workflow file changed during this run, start the workflow on master again (Run workflow)."
+              exit 1
+            fi
+            exit 0
           fi
-          gh release create "$tag" --prerelease --target "$GITHUB_SHA" \
-            --title "audio-os $tag" --notes "Built from $GITHUB_REF_NAME at $GITHUB_SHA." \
-            "$IMAGE" "$IMAGE.sha256"
+          # dev is updated in place, so the previous image stays until the new one is uploaded.
+          # Its tag only anchors the release, at the branch head when it was first created; the notes
+          # name the commit that was built.
+          notes="$notes The dev tag only anchors this release and does not follow the build."
+          gh release view dev >/dev/null 2>&1 ||
+            gh release create dev --prerelease --target "$GITHUB_REF_NAME" --title "audio-os dev" --notes "$notes"
+          gh release upload dev --clobber "$IMAGE" "$IMAGE.sha256"
+          gh release edit dev --notes "$notes"
+          assets="$(gh release view dev --json assets --jq '.assets[].name')"
+          for name in $assets; do
+            case "$name" in
+              "${IMAGE##*/}" | "${IMAGE##*/}.sha256") ;;
+              *) gh release delete-asset dev "$name" --yes ;;
+            esac
+          done
