@@ -87,11 +87,11 @@ test('configurator shapes: names, models and IPv4 interfaces', () => {
     hat_info: { product: 'Amp2' },
     system: { hostname: 'livingroom', pretty_hostname: '' },
   });
-  assert.deepEqual(info, { name: 'livingroom', hostname: 'livingroom', model: 'Raspberry Pi 4 Model B', soundcard: 'Amp2' });
+  assert.deepEqual(info, { name: 'livingroom', model: 'Raspberry Pi 4 Model B', soundcard: 'Amp2' });
   const net = parseNetwork({
     status: 'success',
     data: { hostname: 'livingroom', interfaces: [{ name: 'eth0', ipv4: '10.0.0.5', type: 'wired' }, { name: 'wlan0', ipv4: null }, { name: 'x', ipv4: 'evil' }] },
   });
-  assert.deepEqual(net, { hostname: 'livingroom', interfaces: [{ name: 'eth0', ipv4: '10.0.0.5', type: 'wired' }] });
+  assert.deepEqual(net, { hostname: 'livingroom', interfaces: [{ name: 'eth0', ipv4: '10.0.0.5' }] });
   assert.deepEqual(parseNetwork({ status: 'error' }), { hostname: null, interfaces: [] });
 });

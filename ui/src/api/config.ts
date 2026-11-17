@@ -8,7 +8,6 @@ const BASE = '/api/config/v1';
 
 export interface SystemInfo {
   name: string | null;
-  hostname: string | null;
   model: string | null;
   soundcard: string | null;
 }
@@ -16,7 +15,6 @@ export interface SystemInfo {
 export interface NetworkInterface {
   name: string;
   ipv4: string;
-  type: 'wired' | 'wireless';
 }
 
 export interface NetworkInfo {
@@ -34,7 +32,6 @@ export function parseSystemInfo(v: unknown): SystemInfo {
   const hat = rec(o, 'hat_info') ?? {};
   return {
     name: known(str(system, 'pretty_hostname')) ?? known(str(system, 'hostname')),
-    hostname: known(str(system, 'hostname')),
     model: known(str(pi, 'name')),
     soundcard: known(str(card, 'name')) ?? known(str(hat, 'product')),
   };
@@ -48,7 +45,7 @@ export function parseNetwork(v: unknown): NetworkInfo {
     const name = str(i, 'name');
     const ipv4 = str(i, 'ipv4');
     if (!name || !ipv4 || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ipv4)) continue;
-    interfaces.push({ name, ipv4, type: str(i, 'type') === 'wireless' ? 'wireless' : 'wired' });
+    interfaces.push({ name, ipv4 });
   }
   return { hostname: known(str(data, 'hostname')), interfaces };
 }

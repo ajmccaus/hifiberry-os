@@ -58,7 +58,8 @@ start() {
   # Gateways serve dist/ as built now: always restart them.
   for role in kiosk lan; do
     stop_one "gateway-$role"
-    (cd "$UI" && GATEWAY_ROLE=$role spawn "gateway-$role" npx vite preview --config tests/stack/gateway.config.ts)
+    # node directly (not npx): the recorded pid must be the server itself, or stop leaves it running.
+    (cd "$UI" && spawn "gateway-$role" env GATEWAY_ROLE="$role" node node_modules/vite/bin/vite.js preview --config tests/stack/gateway.config.ts)
   done
   wait_http http://127.0.0.1:5180/
   wait_http http://127.0.0.2:5180/

@@ -27,7 +27,7 @@ const IDLE_RETURN_MS = 60_000;
 let lastInteraction = Date.now();
 
 export function startNav(): void {
-  window.addEventListener('hashchange', () => (screen.value = fromHash()));
+  window.addEventListener('hashchange', () => show(fromHash()));
   if (!isKiosk) return;
   for (const type of ['pointerdown', 'keydown', 'wheel'] as const) {
     window.addEventListener(type, () => (lastInteraction = Date.now()), { capture: true, passive: true });

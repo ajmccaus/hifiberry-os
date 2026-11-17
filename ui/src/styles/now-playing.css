@@ -162,7 +162,8 @@
   justify-content: center;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 50px 35px 0;
+  /* 10 px bottom: the reference's (empty) track-functions row below the artist line */
+  padding: 50px 35px 10px;
   text-align: center;
   transform: translateY(30px);
   opacity: 0;

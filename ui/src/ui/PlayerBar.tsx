@@ -43,7 +43,7 @@ export function PlayerBar() {
     <footer class={`player-bar${nowPlayingOpen.value ? ' shifted' : ''}`}>
       <div class="bar-wrap">
         <IconButton icon="chevron-thin-up" label="Show Now Playing" class="bar-chevron" onClick={open} />
-        <button type="button" class={`mini-info${notice ? ' notice' : ''}`} onClick={open} aria-label="Show Now Playing">
+        <button type="button" class={`mini-info${notice && !menuOpen.value ? ' notice' : ''}`} onClick={open} aria-label="Show Now Playing">
           {info && <Icon name={info.icon} class="mini-source-icon" />}
           {title ? (
             <span class="mini-titles">

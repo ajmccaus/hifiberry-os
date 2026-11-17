@@ -331,9 +331,19 @@ button.item:active .item-value {
   opacity: 0.3;
 }
 
-.kiosk .pill,
 .kiosk .segmented {
   height: var(--hit);
+}
+
+/* Kiosk pills keep the reference's 35 px look; the hit area extends into the 10 px gaps to reach 44 px. */
+.kiosk .pill {
+  position: relative;
+}
+
+.kiosk .pill::before {
+  content: '';
+  position: absolute;
+  inset: -5px -1px;
 }
 
 /* ---------- text inputs ---------- */

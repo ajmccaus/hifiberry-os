@@ -90,3 +90,9 @@ module), apt in chroots via https mirrors + `$HTTPS_PROXY` + CA bundle.
 - Builders are briefed to work in small steps and keep their files on disk in the repo tree, so a
   stop loses at most the step in progress. Resume a stopped builder by messaging it; if its
   transcript is gone, start a new one from its brief in this directory plus the State table.
+- The percentage the owner sees is not exposed, but the session's `usage.cost_usd` (same
+  `get_session` call, includes builders) tracks it: calibrated 2026-11-17 03:41 UTC at about
+  $0.48 per 1% (28% = $13.4 spent since the window began). Rule: at each check-in (every
+  10 minutes) estimate `(cost_now - cost_at_window_start) / 0.48`; pause at >= 70% so the
+  overshoot stays under the owner's 80% limit. Re-baseline when `resetsAt` changes. Other sessions
+  on the account also count, so recalibrate whenever the owner quotes a percentage.

@@ -294,6 +294,12 @@
   text-align: left;
 }
 
+@media (max-width: 620px) {
+  .home-column {
+    max-width: none;
+  }
+}
+
 /* ---------- compact slide-in menu ---------- */
 
 .main-menu {
@@ -511,6 +517,10 @@
 
   .player-bar .volume {
     margin: 0 auto;
+  }
+
+  .bar-wrap .bar-chevron {
+    margin-right: -2px;
   }
 
   .bar-wrap .menu-button {

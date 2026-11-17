@@ -1,9 +1,10 @@
 /* Design tokens, fonts and base reset. Values come from the legacy MIT stylesheet (beostyle2018.css).
-   Constraint: colours live only here as custom properties; dark mode is prefers-color-scheme. */
+   Constraint: colours live only here as custom properties; dark mode is prefers-color-scheme.
+   Weights follow the legacy metropolis.css mapping: 400 = Metropolis Medium, 500 = SemiBold. */
 
 @font-face {
   font-family: Metropolis;
-  src: url(../assets/fonts/Metropolis-Regular.otf) format('opentype');
+  src: url(../assets/fonts/Metropolis-Medium.otf) format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -11,7 +12,7 @@
 
 @font-face {
   font-family: Metropolis;
-  src: url(../assets/fonts/Metropolis-Medium.otf) format('opentype');
+  src: url(../assets/fonts/Metropolis-SemiBold.otf) format('opentype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;

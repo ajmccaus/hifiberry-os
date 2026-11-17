@@ -11,9 +11,3 @@ export function positionAt(anchor: PositionAnchor, playing: boolean, duration: n
   const value = Math.max(0, anchor.value + elapsed);
   return duration !== undefined ? Math.min(value, duration) : value;
 }
-
-export const formatTime = (seconds: number): string => {
-  const s = Math.floor(Math.max(0, seconds));
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
-};
