@@ -25,13 +25,16 @@ owner's device test (`docs/device-test.md`) passes.
 - Sources in the first image: Spotify Connect, AirPlay, Bluetooth, internet radio.
 - Not in the first image: update button and Wi-Fi setup in the UI (no upstream API for either).
 
-## State (2026-11-17 13:40 UTC)
+## State (2026-11-17 14:05 UTC)
 A flashable image is published: every green build of the working branch updates the prerelease
 `dev` (`audio-os-0.1.0+git<commit>.img.xz` + `.sha256`; the release notes name the commit and the
 build time). Nothing has run on a real Pi yet.
 
 - Pull request #4 (working branch to `master`) is v0.1.0: the tag-release path, American English
-  throughout, the documentation cleanup and the fix below. Merge it once CI is green on its head.
+  throughout, the documentation cleanup and the fixes below. CI was green on it (run #29), and
+  `master` is fast-forwarded to it together with this note. A build of `master` publishes the
+  prerelease `build-<date>-<commit>`; that has not happened yet (run #25, the last one on `master`,
+  failed on the `ui-e2e` problem below).
 - The workflow also runs for `v*` tags, builds with the tag as the version and publishes a release
   named after the tag. That path has not run yet. This session's git access cannot push tags or
   delete branches; the owner does both.
@@ -45,8 +48,9 @@ build time). Nothing has run on a real Pi yet.
   GitHub refused the new tag (HTTP 403), so no `dev` image existed from 13:06 to 13:23 UTC. A push
   during the build had changed the workflow file; `docs/dev/FACTS.md` has what is known about the
   rule. The step now updates `dev` in place and removes the old image only after the new one is
-  uploaded. A `master` build can still be refused if `master`'s workflow file changes while it
-  runs; the job then says to start the workflow on `master` again.
+  uploaded; run #29 was the first with that step, and `dev` ended with the new image, its
+  checksum and notes naming the commit. A `master` build can still be refused if `master`'s
+  workflow file changes while it runs; the job then says to start the workflow on `master` again.
 - `device.spec.ts` read the fake systemctl log once, right after the env file appeared, although
   the helper restarts the service after writing the file. It failed in 3 of 4 browser projects on
   a slow machine and now polls like the other checks in that file.
@@ -60,8 +64,10 @@ build time). Nothing has run on a real Pi yet.
 | Branches | Only `master`, `buildroot-legacy` and the working branch exist. |
 
 ## Next steps, in order
-1. Merge pull request #4 once CI is green on its head.
-2. Owner flashes the `dev` image and runs `docs/device-test.md` on the hardware.
+1. Check that the run on `master` after the merge published `build-<date>-<commit>` with the
+   image and its `.sha256`. Do not push to `master` while that run is in progress.
+2. Owner flashes that image (or `dev`; the two differ only in the version string) and runs
+   `docs/device-test.md` on the hardware.
 3. Fix what the device test finds; each fix goes through CI before the next image.
 4. After the device test passes, the owner creates tag `v0.1.0` on `master` (GitHub: Releases →
    Draft a new release → tag `v0.1.0`, target `master`). It is the first run of the tag path: check
