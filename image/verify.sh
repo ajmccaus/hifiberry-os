@@ -176,6 +176,8 @@ for unit in nginx hifiberry-auth audiocontrol config-server audio-os-helper audi
     check "$unit active" in_box systemctl is-active --quiet "$unit.service"
 done
 
+check "nginx -t" in_box nginx -t
+
 user_units=(pipewire.service mpd.service pipewire-api.service)
 for _ in $(seq 60); do
     player_systemctl is-active --quiet "${user_units[@]}" && break

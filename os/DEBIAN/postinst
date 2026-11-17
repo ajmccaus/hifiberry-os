@@ -1,5 +1,5 @@
 #!/bin/sh
-# audio-os postinst: system users, unit enablement, nginx check + reload. Idempotent and
+# audio-os postinst: system users, unit enablement, nginx check + reload (live system). Idempotent and
 # chroot-safe: everything that needs a running systemd is guarded on /run/systemd/system.
 set -e
 
@@ -26,12 +26,13 @@ if [ "$1" = configure ]; then
         fi
     done
 
-    if ! nginx -t; then
-        echo "audio-os: nginx configuration does not validate (see above)" >&2
-        exit 1
-    fi
-
+    # Live system only: "nginx -t" also opens the listen sockets, which a build chroot may not
+    # support (no IPv6 there); the image's boot test proves the configuration instead.
     if [ -d /run/systemd/system ]; then
+        if ! nginx -t; then
+            echo "audio-os: nginx configuration does not validate (see above)" >&2
+            exit 1
+        fi
         systemctl daemon-reload
         systemctl restart audio-os-firewall.service audio-os-helper.service
         if systemctl is-active --quiet nginx.service; then
